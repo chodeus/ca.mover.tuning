@@ -1,0 +1,82 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-GB
+
+reviews:
+  # assertive surfaces lower-confidence findings; chill suppresses them
+  profile: assertive
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+
+  auto_review:
+    enabled: true
+    drafts: false
+    # without this, auto-review only fires for PRs into the default branch
+    base_branches:
+      - "sleepers-base"
+      - "master"
+
+  path_filters:
+    - "!**/*.txz"
+    - "!**/*.png"
+    - "!**/*.svg"
+    - "!**/*.gif"
+
+  path_instructions:
+    - path: "**/age_mover"
+      instructions: |
+        Bash 5 + GNU awk, runs as root on Unraid (Slackware). No bash 4+ guardrails needed.
+
+        This decides, per file, whether the Unraid mover moves it between the cache pool
+        (primary) and the array (secondary). Priority bug classes, in order:
+
+        1. Comments, column headers and settings help text that disagree with the code.
+           In this codebase that disagreement has repeatedly marked a real defect rather
+           than a stale comment: a variable documented as a cumulative moved size while the
+           arithmetic used a scanned total, a projection commented "after this file is
+           processed" while evaluated before it, and a list column named for one value while
+           carrying another. Treat any mismatch between what a comment claims, what a header
+           declares, what the help text promises, and what the code does as a finding.
+        2. awk field-index errors. The pipe-delimited record's column order is fixed by the
+           header written at :916 and re-declared at :1442 and :1517. Any mismatch between
+           those headers, the find -printf format, and the $N used downstream is a real bug.
+        3. Threshold semantics. cache:yes PRIMARYSIZETHRESH is an absolute target usage;
+           cache:prefer is a fill cap. Comparing a cumulative byte total against an absolute
+           usage, or vice versa, is a defect.
+        4. Sign/direction errors in pool accounting. Files arriving on the primary and files
+           leaving it must not share an unsigned accumulator.
+        5. Rows are sorted by mode then time; logic that assumes grouping or ordering that the
+           sort does not guarantee.
+        6. Guards that fail open. Empty command substitutions, xargs without -r, du/find that
+           exit non-zero while still printing, unquoted expansions in test brackets.
+
+        Do not flag stylistic shell preferences that are consistent across the file.
+
+    - path: "**/{share_mover,debug_mover,mover}"
+      instructions: |
+        Bash 5 on Unraid. Focus on fail-open guards, unquoted expansions used in tests or
+        paths, and any assumption that a command substitution is non-empty.
+
+    - path: "**/*.php"
+      instructions: |
+        Unraid emhttp plugin PHP: no Composer, no autoloader, raw includes, global state.
+        Focus on unvalidated input reaching shell_exec/exec, path traversal, and file writes
+        outside the plugin's own config directory.
+
+    - path: "**/*.page"
+      instructions: |
+        Unraid emhttp page: PHP + markdown-ish templating. Focus on unescaped output and any
+        settings whose help text contradicts how the value is used in age_mover.
+
+tools:
+  shellcheck:
+    enabled: true
+  yamllint:
+    enabled: true
+  markdownlint:
+    enabled: false
+
+chat:
+  auto_reply: true
