@@ -75,9 +75,21 @@ jobs:
         path: release_info.json
 
     - name: Commit updated files
+      id: commit
       if: ${{ inputs.publish }}
       uses: stefanzweifel/git-auto-commit-action@b863ae1933cb653a53c021fe36dbb774e1fb9403 # v5
       with:
         repository: ca.mover.tuning
         commit_message: "Auto-build: ${{ steps.validate.outputs.package }}"
         file_pattern: README.md archive/ plugins/ source/ca.mover.tuning/usr/local/emhttp/plugins/ca.mover.tuning/default.cfg
+
+    - name: Create GitHub release
+      if: ${{ steps.commit.outputs.changes_detected == 'true' }}
+      uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+      with:
+        tag_name: ${{ steps.validate.outputs.version }}
+        name: Mover Tuning ${{ steps.validate.outputs.version }}
+        target_commitish: ${{ steps.commit.outputs.commit_hash }}
+        body_path: ca.mover.tuning/.updates.txt
+        files: ca.mover.tuning/archive/${{ steps.validate.outputs.package }}
+        fail_on_unmatched_files: true
