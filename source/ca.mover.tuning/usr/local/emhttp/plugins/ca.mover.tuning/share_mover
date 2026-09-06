@@ -157,7 +157,7 @@ if grep -qs 'shareUseCache="yes\|shareUseCache="prefer"' "$SHARECFG"; then
     # Check if the storage exists
     if [ ! -d "/mnt/$PRIMARYSTORAGENAME" ]; then
         # Do not process this pool if path does not exist
-        mvlogger "/mnt/$PRIMARYSTORAGENAME does not exist. Is the pool still used? Consider removing $SHARECFG if not."
+        mvlogger "\"/mnt/$PRIMARYSTORAGENAME\" does not exist. Is the pool still used? Consider removing $SHARECFG if not."
         mvlogger "=> Skipping"
         exit
     fi
@@ -186,7 +186,7 @@ if grep -qs 'shareUseCache="yes\|shareUseCache="prefer"' "$SHARECFG"; then
     mvlogger "Share Information: Name: $SHARENAME - Path: $SHAREPATH"
     if [ ! -d "$SHAREPATH" ]; then # && [ $SHAREUSECACHE != "no" ]
         # Do not process this pool if path does not exist
-        mvlogger "$SHAREPATH does not exist or is empty."
+        mvlogger "\"$SHAREPATH\" does not exist or is empty."
         mvlogger "=> Skipping"
     else
         mvlogger "$(titleLine 'LET THE MOVING SHOW BEGIN !' '*')"

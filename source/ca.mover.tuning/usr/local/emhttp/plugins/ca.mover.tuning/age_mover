@@ -1004,7 +1004,7 @@ createFilteredFilelist() {
         # Check if the storage exists
         if [ ! -d "/mnt/$PRIMARYSTORAGENAME" ]; then
             # Do not process this pool if path does not exist
-            mvlogger "/mnt/$PRIMARYSTORAGENAME does not exist. Is the pool still used? Consider removing $SHARECFG if not."
+            mvlogger "\"/mnt/$PRIMARYSTORAGENAME\" does not exist. Is the pool still used? Consider removing $SHARECFG if not."
             mvlogger "Tip: Safely remove unused shares via the Unraid Shares -> Clean Up button."
             mvlogger "=> Skipping"
             continue # Move to the next iteration of the loop
@@ -1076,12 +1076,12 @@ createFilteredFilelist() {
             # Check if share mount point is ZFS
             if is_zfs_pool "$PRIMARYSTORAGENAME"; then
                 # Do not process this pool if path does not exist
-                mvlogger "$SHAREPATH does not exist. Is the ZFS dataset not created yet? Copy files to '/mnt/user/$SHARENAME' first."
+                mvlogger "\"$SHAREPATH\" does not exist. Is the ZFS dataset not created yet? Copy files to '/mnt/user/$SHARENAME' first."
                 mvlogger "Tip: Safely remove unused shares via the Unraid Shares -> Clean Up button."
                 mvlogger "=> Skipping"
             else
                 # Do not process this pool if path does not exist
-                mvlogger "$SHAREPATH does not exist. Is the share still used? Consider removing $SHARECFG if not."
+                mvlogger "\"$SHAREPATH\" does not exist. Is the share still used? Consider removing $SHARECFG if not."
                 mvlogger "Tip: Safely remove unused shares via the Unraid Shares -> Clean Up button."
                 mvlogger "=> Skipping"
             fi
@@ -1120,7 +1120,7 @@ createFilteredFilelist() {
                         COUNT_SECONDARY_FILES=$((COUNT_SECONDARY_FILES + tmp))
                     else
                         # Do not process this pool if path does not exist
-                        mvlogger "$PRIMARY_SHAREPATH exist but $SECONDARY_SHAREPATH does not exist. Is the share on secondary storage not created yet?"
+                        mvlogger "Nothing to bring back: this cache:prefer share has no files on secondary storage (\"$SECONDARY_SHAREPATH\" does not exist)."
                         mvlogger "=> Skipping"
                         continue # Move to the next iteration of the loop
                     fi
@@ -1139,7 +1139,7 @@ createFilteredFilelist() {
                     # Check if no paths were found
                     if [[ -z "$PREFER_SHAREPATH" ]]; then
                         # Do not process this pool if path does not exist
-                        mvlogger "$PRIMARY_SHAREPATH exist but no disk paths found for $SHARENAME in $SECONDARYSTORAGENAME. Is the share on secondary storage not created yet?"
+                        mvlogger "Nothing to bring back: this cache:prefer share has no files on the array (no \"$SHARENAME\" folder on any array disk)."
                         mvlogger "=> Skipping"
                         continue # Move to the next iteration of the loop
                     fi
@@ -1986,14 +1986,14 @@ processTheMoves() {
             if [[ "$ACTION" =~ "move" ]]; then
                 # Some verbosity
                 GUI_ACTION="Moving to $DESTINATION/ $([ "$NBLINKS" -gt 1 ] && [ -f "$FILEPATH" ] && echo '(preserving hardlinks)')"
-                mvlogger "Moving $SYNCED_FILES to  $DESTINATION/ $([ "$NBLINKS" -gt 1 ] && [ -f "$FILEPATH" ] && echo '(preserving hardlinks)')"
+                mvlogger "Moving $SYNCED_FILES to  \"$DESTINATION/\" $([ "$NBLINKS" -gt 1 ] && [ -f "$FILEPATH" ] && echo '(preserving hardlinks)')"
                 rsync_action="Move"
                 # Finalize RSYNC_CMD
                 RSYNC_CMD+=(--remove-source-files)
             elif [[ "$ACTION" =~ "sync" ]]; then
                 # Some verbosity
                 GUI_ACTION="Synchronizing to $DESTINATION/ $([ "$NBLINKS" -gt 1 ] && [ -f "$FILEPATH" ] && echo '(preserving hardlinks)')"
-                mvlogger "Synchronizing  $SYNCED_FILES to  $DESTINATION/ $([ "$NBLINKS" -gt 1 ] && [ -f "$FILEPATH" ] && echo '(preserving hardlinks)')"
+                mvlogger "Synchronizing  $SYNCED_FILES to  \"$DESTINATION/\" $([ "$NBLINKS" -gt 1 ] && [ -f "$FILEPATH" ] && echo '(preserving hardlinks)')"
                 rsync_action="Sync"
             fi
 
