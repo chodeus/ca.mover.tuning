@@ -188,6 +188,8 @@ mover_state() {
             printf 'pid=%s etime=%s cmdline=' "$pid" "$(ps -o etime= -p "$pid" | tr -d ' ')"
             tr '\0' ' ' <"/proc/$pid/cmdline"
             echo
+            # same test the mover itself uses to refuse a second run (age_mover, share_mover)
+            ps h "$pid" | grep -q mover || echo "pid=$pid is not a mover (reused pid, so the pid file is stale)"
         else
             echo "pid=${pid:-?} not running (stale pid file)"
         fi
