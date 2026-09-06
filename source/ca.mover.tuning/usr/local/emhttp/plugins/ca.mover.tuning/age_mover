@@ -2332,7 +2332,7 @@ processTheMoves() {
 # lower moving threshold while the old freeing value is still selected.
 warn_freeing_above_moving() {
     if [ "$FREEINGPCTLIMIT" -gt "$MOVINGPCTTHRESHOLD" ]; then
-        mvlogger "Warning: Freeing threshold ($FREEINGPCTLIMIT%) is above the moving threshold ($MOVINGPCTTHRESHOLD%), so no file can be moved. The settings page will show the freeing threshold as $MOVINGPCTTHRESHOLD% until it is saved again."
+        mvlogger "Warning: Freeing threshold ($FREEINGPCTLIMIT%) is above the moving threshold ($MOVINGPCTTHRESHOLD%). The mover starts at $MOVINGPCTTHRESHOLD% and stops at $FREEINGPCTLIMIT%, so nothing is moved while the pool sits between them. The settings page will show the freeing threshold as $MOVINGPCTTHRESHOLD% until it is saved again."
     fi
 }
 
