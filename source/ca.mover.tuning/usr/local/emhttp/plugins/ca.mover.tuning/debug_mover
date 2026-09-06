@@ -41,13 +41,17 @@ function mangle_leaf(s,   i) {
     return mangle(s)
 }
 
-function mangle_path(p,   parts, n, i, out) {
+function mangle_path(p,   parts, n, i, out, abs, keep) {
+    # Absolute paths are /mnt/<pool>/<share>/..., so the readable prefix is parts 1-4.
+    # Mover_action rows are share-relative, so there the share is part 1 and nothing else
+    # is structural - a deeper folder named after a share is somebody's data, not a share.
+    abs = (substr(p, 1, 1) == "/")
     n = split(p, parts, "/")
     out = ""
     for (i = 1; i <= n; i++) {
-        if (i <= 3 || parts[i] in pool || parts[i] in share)
-            out = out (i > 1 ? "/" : "") parts[i]
-        else out = out "/" mangle_leaf(parts[i])
+        if (abs) keep = (i <= 3 || (i == 4 && parts[i] in share))
+        else keep = (i == 1 && (parts[i] in share || parts[i] in pool))
+        out = out (i > 1 ? "/" : "") (keep ? parts[i] : mangle_leaf(parts[i]))
     }
     return out
 }
