@@ -41,13 +41,15 @@ function mangle_leaf(s,   i) {
     return mangle(s)
 }
 
-function mangle_path(p,   parts, n, i, out) {
+function mangle_path(p,   parts, n, i, out, abs, keep) {
+    # the i<=3 prefix is "", "mnt", "<pool>" - it only holds for an absolute path.
+    # Mover_action rows are share-relative, so there it would keep three real names.
+    abs = (substr(p, 1, 1) == "/")
     n = split(p, parts, "/")
     out = ""
     for (i = 1; i <= n; i++) {
-        if (i <= 3 || parts[i] in pool || parts[i] in share)
-            out = out (i > 1 ? "/" : "") parts[i]
-        else out = out "/" mangle_leaf(parts[i])
+        keep = ((abs && i <= 3) || parts[i] in pool || parts[i] in share)
+        out = out (i > 1 ? "/" : "") (keep ? parts[i] : mangle_leaf(parts[i]))
     }
     return out
 }
