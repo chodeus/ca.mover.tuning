@@ -2047,7 +2047,7 @@ processTheMoves() {
                     # Collapse the rsync --relative marker ("/./" -> "/")
                     FILE="${FILE//\/.\//\/}"
                     DIR=$(dirname "$FILE")
-                    mvDebuglogger "Current file: $FILE, Current folder: $DIR, Previous folder: $LAST_DIR, Previous count: $LAST_COUNT" "Clean Folder - Start Loop"
+                    mvDebuglogger "Current file: $(qp "$FILE"), Current folder: $(qp "$DIR"), Previous folder: $(qp "$LAST_DIR"), Previous count: $LAST_COUNT" "Clean Folder - Start Loop"
 
                     if [ -e "${DIR}/.placeholder" ]; then
                         count=".placeholder"
@@ -2149,9 +2149,9 @@ processTheMoves() {
                 if [ ! -d "$START_DIR" ]; then
                     START_DIR="$(dirname "${START_DIR}")"
                     if [ -d "$START_DIR" ]; then
-                        mvDebuglogger "Skipping cleanup: $START_DIR no longer exists, using upper folder: $(dirname "${START_DIR}")" "Clean Empty Moved Folder"
+                        mvDebuglogger "Skipping cleanup: $(qp "$START_DIR") no longer exists, using upper folder: $(qp "$(dirname "${START_DIR}")")" "Clean Empty Moved Folder"
                     else
-                        mvDebuglogger "Skipping cleanup: $START_DIR no longer exists" "Clean Empty Moved Folder"
+                        mvDebuglogger "Skipping cleanup: $(qp "$START_DIR") no longer exists" "Clean Empty Moved Folder"
                         continue
                     fi
                 fi
@@ -2231,7 +2231,7 @@ processTheMoves() {
                             file_count=$(find "$top_folder" -type f | wc -l)
                             dir_count=$(find "$top_folder" -mindepth 1 -type d | wc -l)
 
-                            mvDebuglogger "Top folder: $top_folder, share file(s): $file_count, share folder(s): $dir_count" "Clean Top Folder"
+                            mvDebuglogger "Top folder: $(qp "$top_folder"), share file(s): $file_count, share folder(s): $dir_count" "Clean Top Folder"
 
                             # Delete only if truly empty
                             if [ "$file_count" -eq 0 ] && [ "$dir_count" -eq 0 ]; then
