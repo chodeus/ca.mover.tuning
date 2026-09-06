@@ -314,6 +314,10 @@ escape_find_path() {
 #   1 → echo + log file
 #   2 → log file only
 #
+# Wraps a path for a log message: the debug package ends a path at the quote, so an
+# embedded quote - an edge case, but the last redaction hole - would expose the rest.
+qp() { local p=${1//\\/\\\\}; printf '"%s"' "${p//\"/\\\"}"; }
+
 mvlogger() {
     local msg="$1"
     local notify="$2"
@@ -1004,7 +1008,7 @@ createFilteredFilelist() {
         # Check if the storage exists
         if [ ! -d "/mnt/$PRIMARYSTORAGENAME" ]; then
             # Do not process this pool if path does not exist
-            mvlogger "\"/mnt/$PRIMARYSTORAGENAME\" does not exist. Is the pool still used? Consider removing $SHARECFG if not."
+            mvlogger "$(qp "/mnt/$PRIMARYSTORAGENAME") does not exist. Is the pool still used? Consider removing $SHARECFG if not."
             mvlogger "Tip: Safely remove unused shares via the Unraid Shares -> Clean Up button."
             mvlogger "=> Skipping"
             continue # Move to the next iteration of the loop
@@ -1076,12 +1080,12 @@ createFilteredFilelist() {
             # Check if share mount point is ZFS
             if is_zfs_pool "$PRIMARYSTORAGENAME"; then
                 # Do not process this pool if path does not exist
-                mvlogger "\"$SHAREPATH\" does not exist. Is the ZFS dataset not created yet? Copy files to \"/mnt/user/$SHARENAME\" first."
+                mvlogger "$(qp "$SHAREPATH") does not exist. Is the ZFS dataset not created yet? Copy files to $(qp "/mnt/user/$SHARENAME") first."
                 mvlogger "Tip: Safely remove unused shares via the Unraid Shares -> Clean Up button."
                 mvlogger "=> Skipping"
             else
                 # Do not process this pool if path does not exist
-                mvlogger "\"$SHAREPATH\" does not exist. Is the share still used? Consider removing $SHARECFG if not."
+                mvlogger "$(qp "$SHAREPATH") does not exist. Is the share still used? Consider removing $SHARECFG if not."
                 mvlogger "Tip: Safely remove unused shares via the Unraid Shares -> Clean Up button."
                 mvlogger "=> Skipping"
             fi
@@ -1120,7 +1124,7 @@ createFilteredFilelist() {
                         COUNT_SECONDARY_FILES=$((COUNT_SECONDARY_FILES + tmp))
                     else
                         # Do not process this pool if path does not exist
-                        mvlogger "Nothing to bring back: this cache:prefer share has no files on secondary storage (\"$SECONDARY_SHAREPATH\" does not exist)."
+                        mvlogger "Nothing to bring back: this cache:prefer share has no files on secondary storage ($(qp "$SECONDARY_SHAREPATH") does not exist)."
                         mvlogger "=> Skipping"
                         continue # Move to the next iteration of the loop
                     fi
@@ -1938,7 +1942,7 @@ processTheMoves() {
             if [[ "$FILETYPE" == "d" && "$ACTION" =~ "move" ]]; then
                 # If the directory is listed in the skiplist, skip it
                 if [[ -n "$SKIPFILESLIST" && -f "$SKIPFILESLIST" ]] && grep -q "${SOURCE}/${FILEPATH}" "$SKIPFILESLIST"; then
-                    mvlogger "Skipping empty folder \"${SOURCE}/${FILEPATH}\" as it is listed in the skip list."
+                    mvlogger "Skipping empty folder $(qp "${SOURCE}/${FILEPATH}") as it is listed in the skip list."
                     continue # do not move this folder
                 fi
             fi
@@ -1957,7 +1961,7 @@ processTheMoves() {
             # Check File by validate function and skip if error
             if [ "$VALIDATE_FILENAMES" = "yes" ]; then
                 if ! validate_filename "$(basename "$FILEPATH")"; then
-                    mvlogger "Error: Invalid filename path: \"$SOURCE/$FILEPATH\". Please either change the filename to valid or disable the 'Validate input filenames' option." "failure"
+                    mvlogger "Error: Invalid filename path: $(qp "$SOURCE/$FILEPATH"). Please either change the filename to valid or disable the 'Validate input filenames' option." "failure"
                     continue
                 #else
                 #    mvlogger "Valid filename"
@@ -1972,7 +1976,8 @@ processTheMoves() {
             # SYNCED_FILES is a display/count string only, derived from the array so
             # the extraction pipeline above runs only once per file.
             SYNCED_FILES=""
-            [[ ${#SYNCED_FILES_ARR[@]} -gt 0 ]] && printf -v SYNCED_FILES '"%s" ' "${SYNCED_FILES_ARR[@]}"
+            SYNCED_FILES=""
+            for f in "${SYNCED_FILES_ARR[@]}"; do SYNCED_FILES+="$(qp "$f") "; done
             GUI_CURRENT_FILE=$SYNCED_FILES
 
             # Check if list is complete (array length is exact, unlike parsing the string)
@@ -1986,14 +1991,14 @@ processTheMoves() {
             if [[ "$ACTION" =~ "move" ]]; then
                 # Some verbosity
                 GUI_ACTION="Moving to $DESTINATION/ $([ "$NBLINKS" -gt 1 ] && [ -f "$FILEPATH" ] && echo '(preserving hardlinks)')"
-                mvlogger "Moving $SYNCED_FILES to  \"$DESTINATION/\" $([ "$NBLINKS" -gt 1 ] && [ -f "$FILEPATH" ] && echo '(preserving hardlinks)')"
+                mvlogger "Moving $SYNCED_FILES to  $(qp "$DESTINATION/") $([ "$NBLINKS" -gt 1 ] && [ -f "$FILEPATH" ] && echo '(preserving hardlinks)')"
                 rsync_action="Move"
                 # Finalize RSYNC_CMD
                 RSYNC_CMD+=(--remove-source-files)
             elif [[ "$ACTION" =~ "sync" ]]; then
                 # Some verbosity
                 GUI_ACTION="Synchronizing to $DESTINATION/ $([ "$NBLINKS" -gt 1 ] && [ -f "$FILEPATH" ] && echo '(preserving hardlinks)')"
-                mvlogger "Synchronizing  $SYNCED_FILES to  \"$DESTINATION/\" $([ "$NBLINKS" -gt 1 ] && [ -f "$FILEPATH" ] && echo '(preserving hardlinks)')"
+                mvlogger "Synchronizing  $SYNCED_FILES to  $(qp "$DESTINATION/") $([ "$NBLINKS" -gt 1 ] && [ -f "$FILEPATH" ] && echo '(preserving hardlinks)')"
                 rsync_action="Sync"
             fi
 
@@ -2010,7 +2015,7 @@ processTheMoves() {
                 if [ "$TESTMODE" = "yes" ]; then
                     mvlogger "TEST MODE: Would move using Unraid move utility"
                 else
-                    mvDebuglogger "Move cmd: move, Move $filetype: \"$SOURCE/$FILEPATH\", Dest: \"$DESTINATION/\"" "Move Action"
+                    mvDebuglogger "Move cmd: move, Move $filetype: $(qp "$SOURCE/$FILEPATH"), Dest: $(qp "$DESTINATION/")" "Move Action"
                     # Perform unraid binary move.
                     find "$SOURCE/$FILEPATH" | /usr/libexec/unraid/move "$DEBUGGING" >>"$MOVER_DEBUG_LOG" 2>&1
                 fi
@@ -2021,13 +2026,14 @@ processTheMoves() {
                 else
                     # one quoted token per argv element, like SYNCED_FILES above: [*] joins the
                     # paths with spaces, and the anonymiser cannot tell where one ends
-                    printf -v RSYNC_CMD_LOG '"%s" ' "${RSYNC_CMD[@]}"
-                    mvDebuglogger "Rsync cmd: $RSYNC_CMD_LOG, $rsync_action $filetype: $SYNCED_FILES, Dest: \"$DESTINATION/\"" "$rsync_action Action"
+                    RSYNC_CMD_LOG=""
+                    for a in "${RSYNC_CMD[@]}"; do RSYNC_CMD_LOG+="$(qp "$a") "; done
+                    mvDebuglogger "Rsync cmd: $RSYNC_CMD_LOG, $rsync_action $filetype: $SYNCED_FILES, Dest: $(qp "$DESTINATION/")" "$rsync_action Action"
                     # Perform rsync. relative paths and hardlinks
                     if [ ${#SYNCED_FILES_ARR[@]} -gt 0 ]; then
                         "${RSYNC_CMD[@]}" "${SYNCED_FILES_ARR[@]}" "$DESTINATION/"
                     else
-                        mvlogger "Error: No files found to move for \"$SOURCE/$FILEPATH\"" "failure"
+                        mvlogger "Error: No files found to move for $(qp "$SOURCE/$FILEPATH")" "failure"
                     fi
                 fi
             fi
