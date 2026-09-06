@@ -198,8 +198,15 @@ unraid_notify() {
 
 pool_fstype() {
     # sets POOLFSTYPE, one findmnt per pool per run. Never call it inside $(...): the subshell drops the cache
+    POOLFSTYPE=""
     [ -n "$1" ] || return 1
-    [ -n "${POOL_FSTYPE_CACHE[$1]+x}" ] || POOL_FSTYPE_CACHE[$1]=$(findmnt -no fstype "/mnt/$1" | tail -n 1)
+    if [ -z "${POOL_FSTYPE_CACHE[$1]+x}" ]; then
+        local fstype
+        # do not cache a failed lookup: the pool would stay unknown for the rest of the run
+        fstype=$(findmnt -no fstype "/mnt/$1" | tail -n 1)
+        [ -n "$fstype" ] || return 1
+        POOL_FSTYPE_CACHE[$1]=$fstype
+    fi
     POOLFSTYPE=${POOL_FSTYPE_CACHE[$1]}
 }
 
