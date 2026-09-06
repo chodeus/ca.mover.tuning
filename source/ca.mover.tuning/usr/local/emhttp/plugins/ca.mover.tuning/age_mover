@@ -1076,7 +1076,7 @@ createFilteredFilelist() {
             # Check if share mount point is ZFS
             if is_zfs_pool "$PRIMARYSTORAGENAME"; then
                 # Do not process this pool if path does not exist
-                mvlogger "\"$SHAREPATH\" does not exist. Is the ZFS dataset not created yet? Copy files to '/mnt/user/$SHARENAME' first."
+                mvlogger "\"$SHAREPATH\" does not exist. Is the ZFS dataset not created yet? Copy files to \"/mnt/user/$SHARENAME\" first."
                 mvlogger "Tip: Safely remove unused shares via the Unraid Shares -> Clean Up button."
                 mvlogger "=> Skipping"
             else
@@ -1957,7 +1957,7 @@ processTheMoves() {
             # Check File by validate function and skip if error
             if [ "$VALIDATE_FILENAMES" = "yes" ]; then
                 if ! validate_filename "$(basename "$FILEPATH")"; then
-                    mvlogger "Error: Invalid filename path: '$FILEPATH'. Please either change the filename to valid or disable the 'Validate input filenames' option." "failure"
+                    mvlogger "Error: Invalid filename path: \"$SOURCE/$FILEPATH\". Please either change the filename to valid or disable the 'Validate input filenames' option." "failure"
                     continue
                 #else
                 #    mvlogger "Valid filename"
@@ -2010,7 +2010,7 @@ processTheMoves() {
                 if [ "$TESTMODE" = "yes" ]; then
                     mvlogger "TEST MODE: Would move using Unraid move utility"
                 else
-                    mvDebuglogger "Move cmd: move, Move $filetype: $SOURCE/$FILEPATH, Dest: $DESTINATION/" "Move Action"
+                    mvDebuglogger "Move cmd: move, Move $filetype: \"$SOURCE/$FILEPATH\", Dest: \"$DESTINATION/\"" "Move Action"
                     # Perform unraid binary move.
                     find "$SOURCE/$FILEPATH" | /usr/libexec/unraid/move "$DEBUGGING" >>"$MOVER_DEBUG_LOG" 2>&1
                 fi
@@ -2019,12 +2019,15 @@ processTheMoves() {
                 if [ "$TESTMODE" = "yes" ]; then
                     mvlogger "TEST MODE: Would $rsync_action using rsync utility"
                 else
-                    mvDebuglogger "Rsync cmd: ${RSYNC_CMD[*]}, $rsync_action $filetype: $SYNCED_FILES, Dest: $DESTINATION/" "$rsync_action Action"
+                    # one quoted token per argv element, like SYNCED_FILES above: [*] joins the
+                    # paths with spaces, and the anonymiser cannot tell where one ends
+                    printf -v RSYNC_CMD_LOG '"%s" ' "${RSYNC_CMD[@]}"
+                    mvDebuglogger "Rsync cmd: $RSYNC_CMD_LOG, $rsync_action $filetype: $SYNCED_FILES, Dest: \"$DESTINATION/\"" "$rsync_action Action"
                     # Perform rsync. relative paths and hardlinks
                     if [ ${#SYNCED_FILES_ARR[@]} -gt 0 ]; then
                         "${RSYNC_CMD[@]}" "${SYNCED_FILES_ARR[@]}" "$DESTINATION/"
                     else
-                        mvlogger "Error: No files found to move for $FILEPATH" "failure"
+                        mvlogger "Error: No files found to move for \"$SOURCE/$FILEPATH\"" "failure"
                     fi
                 fi
             fi

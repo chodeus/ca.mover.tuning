@@ -73,7 +73,9 @@ LIST && NF > 1 { $NF = mangle_path($NF); print; next }
     # mangle_leaf runs its own match() and would clobber RSTART/RLENGTH.
     # So a log message must quote a path it puts mid-sentence - only the caller knows
     # where the path ends, and unquoted the prose after it is mangled away too.
-    while (match(line, /\/mnt\/[^"',;|]*/)) {
+    # Only the quote terminates: , ; | and ' are all legal in a file name, and any of
+    # them in the terminator set leaks the rest of the name ("Ocean's Eleven").
+    while (match(line, /\/mnt\/[^"]*/)) {
         st = RSTART; len = RLENGTH
         tok = substr(line, st, len); tail = ""
         # trailing blanks belong to the line, not the path
