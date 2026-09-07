@@ -317,8 +317,12 @@ $(function() {
   toggleTime('atime');
   toggleAge($('select[name="age"]').val());
 
-  mtRebuildThresholds($('select[name="movingThreshold"]').val());
-  mtWarnSavedThresholds();
+  // the share page omits these selects for cache:prefer and unavailable shares
+  var $moving = $('select[name="movingThreshold"]');
+  if ($moving.length) {
+    mtRebuildThresholds($moving.val());
+    mtWarnSavedThresholds();
+  }
 });
 </script>
 
