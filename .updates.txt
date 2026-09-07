@@ -26,3 +26,7 @@
 - fix: The debug package now hides file names in the mover action lists and in the plugin's own logs.
 - fix: The debug package now records whether the mover was really running, and runs started from the web button are reported as "web button" instead of "unknown".
 - fix: Removed unused code, corrected internal config key names, and fixed the README note that said the threshold warnings only appear in test mode.
+- fix: Threshold dropdowns on the mover and share settings pages now update dynamically when the moving threshold changes.
+- fix: Available options are constrained so freeing thresholds stay at or below the moving threshold, while Move All thresholds stay above it.
+- fix: Previously saved values outside the valid ranges are adjusted and clearly flagged with warnings.
+- fix: Threshold controls refresh immediately when related settings change.
