@@ -41,6 +41,18 @@ function mangle_leaf(s,   i) {
     return mangle(s)
 }
 
+# the producer escapes \ and " inside a path (qp in age_mover/share_mover); undo that
+# before measuring, so a name is dashed to its real length
+function unescape(s,   out, i, c) {
+    out = ""
+    for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        if (c == "\\" && i < length(s)) { i++; c = substr(s, i, 1) }
+        out = out c
+    }
+    return out
+}
+
 function mangle_path(p,   parts, n, i, out, abs, keep) {
     # Absolute paths are /mnt/<pool>/<share>/..., so the readable prefix is parts 1-4.
     # Mover_action rows are share-relative, so there the share is part 1 and nothing else
@@ -71,12 +83,16 @@ LIST && NF > 1 { $NF = mangle_path($NF); print; next }
     out = ""
     # spaces are not a terminator: file names contain them. copy st/len first,
     # mangle_leaf runs its own match() and would clobber RSTART/RLENGTH.
-    while (match(line, /\/mnt\/[^"',;|]*/)) {
+    # So a log message must quote a path it puts mid-sentence - only the caller knows
+    # where the path ends, and unquoted the prose after it is mangled away too.
+    # Only an UNESCAPED quote terminates: , ; | ' and " are all legal in a file name and
+    # any of them ending the match leaks the rest of it. ' and , are common, " is an edge case.
+    while (match(line, /\/mnt\/(\\.|[^"\\])*/)) {
         st = RSTART; len = RLENGTH
         tok = substr(line, st, len); tail = ""
         # trailing blanks belong to the line, not the path
         if (match(tok, /[ \t]+$/)) { tail = substr(tok, RSTART); tok = substr(tok, 1, RSTART - 1) }
-        out = out substr(line, 1, st - 1) mangle_path(tok) tail
+        out = out substr(line, 1, st - 1) mangle_path(unescape(tok)) tail
         line = substr(line, st + len)
     }
     print out line
