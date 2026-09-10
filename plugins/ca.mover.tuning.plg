@@ -6,7 +6,7 @@
 <!ENTITY md5       "ee9abb73b29846f03ac7f48ebabd7aa0">
 <!ENTITY launch    "Settings/Scheduler">
 <!ENTITY plugdir   "/usr/local/emhttp/plugins/&name;">
-<!ENTITY github    "masterwishx/&name;">
+<!ENTITY github    "chodeus/&name;">
 <!ENTITY branch    "master">
 <!ENTITY upgrade   "minor">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/master/plugins/&name;.plg">
