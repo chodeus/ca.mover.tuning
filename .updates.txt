@@ -30,3 +30,4 @@
 - fix: Available options are constrained so freeing thresholds stay at or below the moving threshold, while Move All thresholds stay above it.
 - fix: Previously saved values outside the valid ranges are adjusted and clearly flagged with warnings.
 - fix: Threshold controls refresh immediately when related settings change.
+- test: exercise a build that only touches the release notes
