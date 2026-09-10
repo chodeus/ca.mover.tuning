@@ -14,6 +14,7 @@ md5=$(md5sum "$out/$name-$version-x86_64-1.txz" | cut -d' ' -f1)
 sed -i -e "s|^<!ENTITY version   \".*\">|<!ENTITY version   \"$version\">|" -e "s|^<!ENTITY md5       \".*\">|<!ENTITY md5       \"$md5\">|" \
        -e 's|^<!ENTITY github    ".*">|<!ENTITY github    "chodeus/\&name;">|' \
        -e "s|^<!ENTITY branch    \".*\">|<!ENTITY branch    \"$branch\">|" \
+       -e 's|^<!ENTITY pluginURL ".*">|<!ENTITY pluginURL "https://raw.githubusercontent.com/\&github;/evil/plugins/\&name;.plg">|' \
        -e 's|<URL>https://github.com/&github;/raw/&branch;/archive/&name;-&version;-x86_64-1.txz</URL>|<URL>https://github.com/\&github;/releases/download/v\&version;/\&name;-\&version;-x86_64-1.txz</URL>|' "$plg"
 grep -q '/releases/download/v&version;/' "$plg" || { echo "manifest URL rewrite failed"; exit 1; }
 echo "built $out/$name-$version-x86_64-1.txz md5 $md5"
