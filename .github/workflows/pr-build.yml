@@ -20,7 +20,7 @@ jobs:
     # Only the label press builds; the pull request's own build script runs with a read-only token.
     if: github.event.label.name == 'test-build'
     # Pin to a reviewed chodeus-ops commit.
-    uses: chodeus/chodeus-ops/.github/workflows/unraid-plugin-pr-build.yml@f10aaf9c2847bf783594cf5840a23932550c5717 # feat/unraid-plugin-pr-builds
+    uses: chodeus/chodeus-ops/.github/workflows/unraid-plugin-pr-build.yml@2be34dbb5890dd98ab69dcb239f228dbcbe7f84a # feat/unraid-plugin-pr-builds
     with:
       plg_file: plugins/ca.mover.tuning.plg
       build_cmd: bash ci-build.sh
