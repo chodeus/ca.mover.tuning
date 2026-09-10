@@ -1,0 +1,113 @@
+name: PR publish
+
+# Runs with the repository's own code only: takes the "PR build" artifact, publishes it as the pr-<number>
+# prerelease and keeps one comment on the pull request up to date. Never checks out or runs pull request code.
+on:
+  workflow_run:
+    workflows: ["PR build"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: pr-publish-${{ github.event.workflow_run.head_repository.owner.login }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+env:
+  PLUGIN_NAME: ca.mover.tuning
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  publish:
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Find the open pull request this build belongs to
+      id: pr
+      env:
+        HEAD: ${{ github.event.workflow_run.head_repository.owner.login }}:${{ github.event.workflow_run.head_branch }}
+        SHA: ${{ github.event.workflow_run.head_sha }}
+      run: |
+        number=$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100&head=$HEAD" --jq "map(select(.head.sha == \"$SHA\")) | .[0].number")
+        if [ -z "$number" ] || [ "$number" = "null" ]; then
+          echo "No open pull request at $HEAD $SHA, nothing to publish."
+          exit 0
+        fi
+        # the label is the maintainer's go; checked here too because this is the privileged step
+        if ! gh api "repos/$GITHUB_REPOSITORY/pulls/$number" --jq '.labels[].name' | grep -qx 'test-build'; then
+          echo "Pull request #$number has no test-build label, nothing to publish."
+          exit 0
+        fi
+        echo "number=$number" >> "$GITHUB_OUTPUT"
+
+    - name: Download the build
+      if: steps.pr.outputs.number != ''
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      with:
+        name: pr-build
+        run-id: ${{ github.event.workflow_run.id }}
+        github-token: ${{ github.token }}
+        path: out
+
+    - name: Point the manifest at the pull request release
+      if: steps.pr.outputs.number != ''
+      id: manifest
+      env:
+        PR: ${{ steps.pr.outputs.number }}
+      run: |
+        version=$(tr -d '[:space:]' < out/version)
+        [[ "$version" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}(\.[0-9]{4})?$ ]] || { echo "Unexpected version: $version"; exit 1; }
+        package="$PLUGIN_NAME-$version-x86_64-1.txz"
+        test -s "out/$package"
+        base="https://github.com/$GITHUB_REPOSITORY/releases/download/pr-$PR"
+        plg="out/$PLUGIN_NAME.plg"
+        sed -i -e "s|^<!ENTITY pluginURL .*|<!ENTITY pluginURL \"$base/$PLUGIN_NAME.plg\">|" \
+               -e "s|<URL>https://github.com/&github;/raw/&branch;/archive/&name;-&version;-x86_64-1.txz</URL>|<URL>$base/$package</URL>|" "$plg"
+        [ "$(grep -c "$base" "$plg")" = 2 ] || { echo "Manifest rewrite failed"; exit 1; }
+        md5=$(md5sum "out/$package" | cut -d' ' -f1)
+        grep -Fq "\"$md5\"" "$plg" || { echo "Manifest md5 does not match the package"; exit 1; }
+        { echo "version=$version"; echo "package=$package"; echo "url=$base/$PLUGIN_NAME.plg"; } >> "$GITHUB_OUTPUT"
+
+    - name: Publish the pull request release
+      if: steps.pr.outputs.number != ''
+      env:
+        PR: ${{ steps.pr.outputs.number }}
+        PACKAGE: ${{ steps.manifest.outputs.package }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      run: |
+        tag="pr-$PR"
+        if ! gh release view --repo "$GITHUB_REPOSITORY" "$tag" >/dev/null 2>&1; then
+          gh release create --repo "$GITHUB_REPOSITORY" "$tag" --prerelease --target "$DEFAULT_BRANCH" --title "Test build for pull request #$PR" \
+            --notes "Test build for #$PR. Not a release: replaced on every push and removed when the pull request closes."
+        fi
+        # only the current package stays on the release
+        gh release view --repo "$GITHUB_REPOSITORY" "$tag" --json assets --jq '.assets[].name' | grep '\.txz$' | grep -v -x -F "$PACKAGE" | while read -r old; do
+          gh release delete-asset --repo "$GITHUB_REPOSITORY" "$tag" "$old" --yes
+        done || true
+        gh release upload --repo "$GITHUB_REPOSITORY" "$tag" "out/$PACKAGE" "out/$PLUGIN_NAME.plg" --clobber
+
+    - name: Comment on the pull request
+      if: steps.pr.outputs.number != ''
+      env:
+        PR: ${{ steps.pr.outputs.number }}
+        VERSION: ${{ steps.manifest.outputs.version }}
+        URL: ${{ steps.manifest.outputs.url }}
+        RUN: ${{ github.event.workflow_run.html_url }}
+      run: |
+        marker="<!-- pr-build -->"
+        body=$(printf '%s\n' "$marker" "Test build \`$VERSION\` for this pull request, replaced on every push ([build log]($RUN))." "" "Install from Plugins, Install Plugin, with this URL:" "" '```' "$URL" '```' "" "Reinstall the official plugin URL when done; until then the plugin updates from this pull request. Add the test-build label again for a new build.")
+        id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments?per_page=100" --jq "map(select(.body | startswith(\"$marker\"))) | .[0].id")
+        if [ -n "$id" ] && [ "$id" != "null" ]; then
+          gh api "repos/$GITHUB_REPOSITORY/issues/comments/$id" -X PATCH -f body="$body" >/dev/null
+        else
+          gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -X POST -f body="$body" >/dev/null
+        fi
+
+    - name: Take the label off so the next build needs a new go
+      if: steps.pr.outputs.number != ''
+      env:
+        PR: ${{ steps.pr.outputs.number }}
+      run: gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels/test-build" -X DELETE >/dev/null
