@@ -9,7 +9,7 @@
 <!ENTITY github    "masterwishx/&name;">
 <!ENTITY branch    "master">
 <!ENTITY upgrade   "minor">
-<!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/master/plugins/&name;.plg">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/evil/plugins/&name;.plg">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" icon="wrench" min="6.9.0-rc2">
