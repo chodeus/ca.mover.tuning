@@ -1,8 +1,10 @@
 name: PR build
 
-# Builds the package for every pull request with a read-only token; "PR publish" turns it into a test plugin.
+# Builds the package for a pull request that carries the test-build label, with a read-only token;
+# "PR publish" turns it into a test plugin. A maintainer adds the label when the pull request is worth testing.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - 'source/**'
       - 'plugins/**'
@@ -20,6 +22,7 @@ env:
 
 jobs:
   build:
+    if: contains(github.event.pull_request.labels.*.name, 'test-build')
     runs-on: ubuntu-latest
     steps:
     - name: Checkout the pull request
