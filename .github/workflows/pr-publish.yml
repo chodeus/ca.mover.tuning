@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: pr-publish-${{ github.event.workflow_run.head_repository.owner.login }}-${{ github.event.workflow_run.head_branch }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   PLUGIN_NAME: ca.mover.tuning
@@ -99,7 +99,7 @@ jobs:
       run: |
         marker="<!-- pr-build -->"
         body=$(printf '%s\n' "$marker" "Test build \`$VERSION\` for this pull request, replaced on every push ([build log]($RUN))." "" "Install from Plugins, Install Plugin, with this URL:" "" '```' "$URL" '```' "" "Reinstall the official plugin URL when done; until then the plugin updates from this pull request. Add the test-build label again for a new build.")
-        id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments?per_page=100" --jq "map(select(.body | startswith(\"$marker\"))) | .[0].id")
+        id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments?per_page=100" --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" | head -n 1)
         if [ -n "$id" ] && [ "$id" != "null" ]; then
           gh api "repos/$GITHUB_REPOSITORY/issues/comments/$id" -X PATCH -f body="$body" >/dev/null
         else
@@ -111,3 +111,14 @@ jobs:
       env:
         PR: ${{ steps.pr.outputs.number }}
       run: gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels/test-build" -X DELETE >/dev/null
+
+    - name: Undo the release if the pull request closed meanwhile
+      if: steps.pr.outputs.number != ''
+      env:
+        PR: ${{ steps.pr.outputs.number }}
+      run: |
+        # PR cleanup runs on close and finds nothing when it races this job; finish the job the same way
+        if [ "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .state)" != "open" ]; then
+          gh release delete --repo "$GITHUB_REPOSITORY" "pr-$PR" --yes --cleanup-tag
+          echo "Pull request #$PR closed while publishing; the release was removed again."
+        fi
