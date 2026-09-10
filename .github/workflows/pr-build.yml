@@ -15,6 +15,7 @@ concurrency:
 
 env:
   PLUGIN_NAME: ca.mover.tuning
+  GH_TOKEN: ${{ github.token }}
 
 jobs:
   build:
@@ -27,18 +28,35 @@ jobs:
         path: ca.mover.tuning
         persist-credentials: false
 
-    - name: Build the package with the build time as version suffix
+    - name: Version the build just above the base branch's release
+      id: version
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: |
+        set -euo pipefail
+        # Unraid orders versions with strcmp and refuses to install an older one: <release>.0<UTC build time>
+        # sorts above the current release and below whatever is released next. PR publish checks the same rule.
+        gh api "repos/$GITHUB_REPOSITORY/contents/plugins/$PLUGIN_NAME.plg?ref=$BASE_SHA" --jq .content | base64 -d > base.plg
+        release=$(grep -o '<!ENTITY version *"[^"]*"' base.plg | grep -o '"[^"]*"' | tr -d '"')
+        [[ "$release" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}[0-9a-z.]*$ ]] || { echo "::error::unexpected version '$release' on the base branch"; exit 1; }
+        version="$release.0$(date -u +%y%m%d%H%M%S)"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "version $version (release $release)"
+
+    - name: Build the package
+      env:
+        PKG_VERSION: ${{ steps.version.outputs.version }}
       run: |
         cd "$PLUGIN_NAME/source/$PLUGIN_NAME"
-        bash pkg_build.sh "$GITHUB_WORKSPACE" ".$(date -u +%H%M)"
+        bash pkg_build.sh "$GITHUB_WORKSPACE"
 
     - name: Collect the package and manifest
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
       run: |
-        cfg="$PLUGIN_NAME/source/$PLUGIN_NAME/usr/local/emhttp/plugins/$PLUGIN_NAME/default.cfg"
-        version=$(sed -n 's/^version="\([^"]*\)"/\1/p' "$cfg")
         mkdir out
-        cp "$PLUGIN_NAME/archive/$PLUGIN_NAME-$version-x86_64-1.txz" "$PLUGIN_NAME/plugins/$PLUGIN_NAME.plg" out/
-        echo "$version" > out/version
+        cp "$PLUGIN_NAME/archive/$PLUGIN_NAME-$VERSION-x86_64-1.txz" "$PLUGIN_NAME/plugins/$PLUGIN_NAME.plg" out/
+        echo "$VERSION" > out/version
 
     - name: Upload the build
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
