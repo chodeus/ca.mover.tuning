@@ -36,6 +36,11 @@ jobs:
           echo "No open pull request at $HEAD $SHA, nothing to publish."
           exit 0
         fi
+        # the label is the maintainer's go; checked here too because this is the privileged step
+        if ! gh api "repos/$GITHUB_REPOSITORY/pulls/$number" --jq '.labels[].name' | grep -qx 'test-build'; then
+          echo "Pull request #$number has no test-build label, nothing to publish."
+          exit 0
+        fi
         echo "number=$number" >> "$GITHUB_OUTPUT"
 
     - name: Download the build
