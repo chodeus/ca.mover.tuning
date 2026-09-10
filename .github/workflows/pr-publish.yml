@@ -25,7 +25,7 @@ jobs:
       pull-requests: write
       actions: read
     # Pin to a reviewed chodeus-ops commit.
-    uses: chodeus/chodeus-ops/.github/workflows/unraid-plugin-pr-publish.yml@96bcfc87130b41b6bed3a58ff0a37a10d110355c # feat/unraid-plugin-pr-builds
+    uses: chodeus/chodeus-ops/.github/workflows/unraid-plugin-pr-publish.yml@f10aaf9c2847bf783594cf5840a23932550c5717 # feat/unraid-plugin-pr-builds
     with:
       run_id: ${{ github.event.workflow_run.id }}
       head_owner: ${{ github.event.workflow_run.head_repository.owner.login }}
