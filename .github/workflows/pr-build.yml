@@ -15,7 +15,6 @@ concurrency:
 
 env:
   PLUGIN_NAME: ca.mover.tuning
-  GH_TOKEN: ${{ github.token }}
 
 jobs:
   build:
@@ -31,6 +30,8 @@ jobs:
     - name: Version the build just above the base branch's release
       id: version
       env:
+        # only this step gets the token; the pull request's build script runs without it
+        GH_TOKEN: ${{ github.token }}
         BASE_SHA: ${{ github.event.pull_request.base.sha }}
       run: |
         set -euo pipefail
