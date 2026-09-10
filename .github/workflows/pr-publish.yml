@@ -74,15 +74,15 @@ jobs:
         DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       run: |
         tag="pr-$PR"
-        if ! gh release view "$tag" >/dev/null 2>&1; then
-          gh release create "$tag" --prerelease --target "$DEFAULT_BRANCH" --title "Test build for pull request #$PR" \
+        if ! gh release view --repo "$GITHUB_REPOSITORY" "$tag" >/dev/null 2>&1; then
+          gh release create --repo "$GITHUB_REPOSITORY" "$tag" --prerelease --target "$DEFAULT_BRANCH" --title "Test build for pull request #$PR" \
             --notes "Test build for #$PR. Not a release: replaced on every push and removed when the pull request closes."
         fi
         # only the current package stays on the release
-        gh release view "$tag" --json assets --jq '.assets[].name' | grep '\.txz$' | grep -v -x -F "$PACKAGE" | while read -r old; do
-          gh release delete-asset "$tag" "$old" --yes
+        gh release view --repo "$GITHUB_REPOSITORY" "$tag" --json assets --jq '.assets[].name' | grep '\.txz$' | grep -v -x -F "$PACKAGE" | while read -r old; do
+          gh release delete-asset --repo "$GITHUB_REPOSITORY" "$tag" "$old" --yes
         done || true
-        gh release upload "$tag" "out/$PACKAGE" "out/$PLUGIN_NAME.plg" --clobber
+        gh release upload --repo "$GITHUB_REPOSITORY" "$tag" "out/$PACKAGE" "out/$PLUGIN_NAME.plg" --clobber
 
     - name: Comment on the pull request
       if: steps.pr.outputs.number != ''

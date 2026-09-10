@@ -21,8 +21,8 @@ jobs:
         PR: ${{ github.event.pull_request.number }}
       run: |
         tag="pr-$PR"
-        gh release view "$tag" >/dev/null 2>&1 || { echo "No test build for #$PR."; exit 0; }
-        gh release delete "$tag" --yes --cleanup-tag
+        gh release view --repo "$GITHUB_REPOSITORY" "$tag" >/dev/null 2>&1 || { echo "No test build for #$PR."; exit 0; }
+        gh release delete --repo "$GITHUB_REPOSITORY" "$tag" --yes --cleanup-tag
         marker="<!-- pr-build -->"
         id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments?per_page=100" --jq "map(select(.body | startswith(\"$marker\"))) | .[0].id")
         if [ -n "$id" ] && [ "$id" != "null" ]; then
