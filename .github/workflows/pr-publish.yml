@@ -35,7 +35,9 @@ jobs:
         HEAD: ${{ github.event.workflow_run.head_repository.owner.login }}:${{ github.event.workflow_run.head_branch }}
       run: |
         set -euo pipefail
-        number=$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100&head=$HEAD" --jq "map(select(.head.sha == \"$HEAD_SHA\")) | .[0].number")
+        # gh encodes the fields; a branch name may hold & # + and would split a hand-built query
+        number=$(gh api -X GET "repos/$GITHUB_REPOSITORY/pulls" -f state=open -f per_page=100 -f head="$HEAD" \
+          --jq "map(select(.head.sha == \"$HEAD_SHA\")) | .[0].number")
         if [ -z "$number" ] || [ "$number" = "null" ]; then
           echo "No open pull request at $HEAD ${HEAD_SHA::7}; nothing to publish."
           exit 0
@@ -80,18 +82,21 @@ jobs:
         plg="out/$PLUGIN_NAME.plg"
         package="$PLUGIN_NAME-$version-x86_64-1.txz"
         [ -s "$plg" ] && [ -s "out/$package" ] || { echo "::error::expected $plg and out/$package in the build"; exit 1; }
-        [ "$(entity version "$plg")" = "$version" ] || { echo "::error::the manifest's version entity is not $version"; exit 1; }
+        # the built manifest is read parsed, the way Unraid reads it, never as text: a comment can hold anything
+        xpath() { xmllint --xpath "$1" "$plg"; }
+        [ "$(xpath 'string(/PLUGIN/@version)')" = "$version" ] || { echo "::error::the manifest's version is not $version"; exit 1; }
         md5=$(md5sum "out/$package" | cut -d' ' -f1)
-        [ "$(entity md5 "$plg")" = "$md5" ] || { echo "::error::the manifest's md5 does not match the package"; exit 1; }
+        [ "$(xpath 'string(/PLUGIN/FILE[URL]/MD5)')" = "$md5" ] || { echo "::error::the manifest's package MD5 is not $md5"; exit 1; }
         # pluginURL outlives the test: servers keep checking it for updates, so it must be the base branch's
         want_url=$(xmllint --xpath 'string(/PLUGIN/@pluginURL)' base.plg)
-        got_url=$(xmllint --xpath 'string(/PLUGIN/@pluginURL)' "$plg")
+        got_url=$(xpath 'string(/PLUGIN/@pluginURL)')
         [ -n "$want_url" ] && [ "$got_url" = "$want_url" ] || { echo "::error::manifest pluginURL '$got_url' differs from the base branch's '$want_url'"; exit 1; }
-        # only the package download moves to the pull request release
+        # only the package download moves to the pull request release; after that it must be the manifest's one download
         tag="pr-$PR-$version"
         release_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$tag"
         sed -i "s|<URL>https://github.com/&github;/raw/&branch;/archive/&name;-&version;-x86_64-1.txz</URL>|<URL>$release_url/$package</URL>|" "$plg"
-        [ "$(grep -cF "<URL>$release_url/$package</URL>" "$plg")" = 1 ] || { echo "::error::manifest package URL rewrite failed"; exit 1; }
+        [ "$(xpath 'count(/PLUGIN/FILE/URL)')" = 1 ] && [ "$(xpath 'string(/PLUGIN/FILE/URL)')" = "$release_url/$package" ] \
+          || { echo "::error::the manifest must have one download, $release_url/$package"; exit 1; }
         { echo "version=$version"; echo "tag=$tag"; echo "package=$package"; echo "md5=$md5"; echo "install_url=$release_url/$PLUGIN_NAME.plg"; } >> "$GITHUB_OUTPUT"
 
     - name: Publish the pre-release
@@ -112,12 +117,15 @@ jobs:
           echo
           echo "Install: Plugins > Install Plugin > paste \`$INSTALL_URL\`"
         } > "$notes"
-        # a re-run of the same build meets its own tag; replace it (a new build always has a new version)
-        if gh release view --repo "$GITHUB_REPOSITORY" "$TAG" >/dev/null 2>&1; then gh release delete --repo "$GITHUB_REPOSITORY" "$TAG" --cleanup-tag --yes; fi
-        if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG"; fi
-        # a fork's head commit is not in this repository, so the tag sits on the default branch; the notes name the commit
-        gh release create --repo "$GITHUB_REPOSITORY" "$TAG" "out/$PACKAGE" "out/$PLUGIN_NAME.plg" --target "$DEFAULT_BRANCH" --prerelease \
-          --title "Test build $VERSION (pull request #$PR, ${HEAD_SHA::7})" --notes-file "$notes"
+        # a re-run of this build meets its own release, the same bytes and maybe already announced: keep it, verify it
+        if gh release view --repo "$GITHUB_REPOSITORY" "$TAG" >/dev/null 2>&1; then
+          echo "$TAG exists already (a re-run of this build); verifying it instead of publishing it again."
+        else
+          # a fork's head commit is not in this repository, so the tag sits on the default branch; the notes name the commit
+          gh release create --repo "$GITHUB_REPOSITORY" "$TAG" "out/$PACKAGE" "out/$PLUGIN_NAME.plg" --target "$DEFAULT_BRANCH" --prerelease \
+            --title "Test build $VERSION (pull request #$PR, ${HEAD_SHA::7})" --notes-file "$notes"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+        fi
 
     - name: Verify what a server will fetch
       if: steps.pr.outputs.number != ''
@@ -141,7 +149,7 @@ jobs:
         echo "::notice::install URL: $INSTALL_URL"
 
     - name: Remove the unverified build
-      if: failure() && steps.verify.outcome == 'failure'
+      if: failure() && steps.verify.outcome == 'failure' && steps.publish.outputs.created == 'true'
       env:
         TAG: ${{ steps.meta.outputs.tag }}
       run: gh release delete --repo "$GITHUB_REPOSITORY" "$TAG" --cleanup-tag --yes
