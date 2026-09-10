@@ -73,7 +73,6 @@ Move files off Primary cache based on age=Move files off Primary (<em>cache</em>
 Move files off Primary cache based on sparseness=Move files off Primary (cache) based on sparseness
 Move files that are greater than this many days old=
 Move files that are greater than this sparseness=
-Move files that are greather than this sparseness=
 Move files that are larger than this size In MB=Move files that are larger than this size (In MB)
 Move files tool=
 Move files to Primary cache based on age=Move files to Primary (<em>cache</em>) based on age

@@ -991,7 +991,7 @@ _(Move files off Primary (cache) based on sparseness)_?
 
 :end
 
-_(Move files that are greather than this sparseness)_:
+_(Move files that are greater than this sparseness)_:
 : <select name="sparsnessv" size="1" class='mysparsnessf' <?=$sparsnessfDisabled?>>
 	<?=mk_option($cfg['sparsnessv'], 1, ".1")?>
 	<?=mk_option($cfg['sparsnessv'], 2, ".2")?>
