@@ -151,10 +151,13 @@ $(function() {
 <input type="hidden" name="#file" value="<?=$shareCFG?>">
 
 <? if ($shareName != ""): ?>
+
 <? if (strpos($shareCfgText, 'shareUseCache="no"') !== false || strpos($shareCfgText, 'shareUseCache="only"') !== false): ?>
+
 <div markdown="1" class="shade-<?=$display['theme']?>">
 _(Mover Tuning settings not available for this share)_.
 </div>
+
 <? elseif (strpos($shareCfgText, 'shareUseCache="prefer"') !== false): ?>
 
 <div markdown="1" class="shade-<?=$display['theme']?>">
@@ -268,7 +271,6 @@ _(Only move files larger than this (in MB))_:
   <?= mk_option($cfg['sizeinM'], 9, "9") ?>
   <?= mk_option($cfg['sizeinM'], 10, "10") ?>
   <?= mk_option($cfg['sizeinM'], 11, "11") ?>
-
   <? for ($ds = 12; $ds < 1026; $ds += 2): ?>
   <?= mk_option($cfg['sizeinM'], $ds, "$ds") ?>
   <? endfor; ?>
@@ -512,7 +514,6 @@ _(Only move files larger than this (in MB))_:
   <?= mk_option($cfg['sizeinM'], 9, "9") ?>
   <?= mk_option($cfg['sizeinM'], 10, "10") ?>
   <?= mk_option($cfg['sizeinM'], 11, "11") ?>
-
   <? for ($ds = 12; $ds < 1026; $ds += 2): ?>
   <?= mk_option($cfg['sizeinM'], $ds, "$ds") ?>
   <? endfor; ?>
@@ -549,7 +550,6 @@ _(Sync files that are smaller than this size (In MB))_.
   <?=mk_option($cfg['sizeinMSync'], 9, "9")?>
   <?=mk_option($cfg['sizeinMSync'], 10, "10")?>
   <?=mk_option($cfg['sizeinMSync'], 11, "11")?>
-
 	<?for ($ds=12;$ds<1026;$ds+=2):?>
 		<?=mk_option($cfg['sizeinMSync'], $ds, "$ds")?>
 	<?endfor;?>
@@ -714,12 +714,17 @@ _(Move **ALL** files from current pool (won't use mover settings))_:
 </div>
 
 <? else: ?>
+
 <div markdown="1" class="shade-<?=$display['theme']?>">
 _(Mover Tuning settings not available for this share)_.
 </div>
+
 <? endif; ?>
+
 <? else: ?>
+
 _(Not Applicable (Share Does Not Exist Yet))_!
+
 <? endif; ?>
 
 </form>

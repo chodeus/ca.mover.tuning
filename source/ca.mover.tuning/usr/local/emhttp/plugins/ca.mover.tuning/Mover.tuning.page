@@ -490,7 +490,9 @@ _(Disable Mover running on a schedule)_:
 <?php endif; ?>
 
 <div markdown="1" id="moverTuningSettings">
+
 <?php if (version_compare($vars['version'], '7.2.1', '>=')): ?>
+
 _(Mover Tuning schedule)_:
 : <input type='text' id='tune_cronSchedule' name='moverTuneCron' size='1' class='tune_mycron' placeholder='0 */4 * * *' value='<?=htmlspecialchars($cfg['moverTuneCron'])?>'>
 
@@ -930,7 +932,6 @@ _(Move files that are larger than this size (In MB))_.
   <?=mk_option($cfg['sizeinM'], 9, "9")?>
   <?=mk_option($cfg['sizeinM'], 10, "10")?>
   <?=mk_option($cfg['sizeinM'], 11, "11")?>
-
 	<?for ($ds=12;$ds<1026;$ds+=2):?>
 		<?=mk_option($cfg['sizeinM'], $ds, "$ds")?>
 	<?endfor;?>
@@ -967,7 +968,6 @@ _(Sync files that are smaller than this size (In MB))_.
   <?=mk_option($cfg['sizeinMSync'], 9, "9")?>
   <?=mk_option($cfg['sizeinMSync'], 10, "10")?>
   <?=mk_option($cfg['sizeinMSync'], 11, "11")?>
-
 	<?for ($ds=12;$ds<1026;$ds+=2):?>
 		<?=mk_option($cfg['sizeinMSync'], $ds, "$ds")?>
 	<?endfor;?>
