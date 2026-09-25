@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.09.25
 
 - new: Releases go through a release PR per channel, with a beta channel
 - fix: The installer's messages read more clearly
