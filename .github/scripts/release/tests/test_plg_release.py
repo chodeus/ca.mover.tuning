@@ -867,6 +867,22 @@ class Channels:
         self.sh(self.user, "tag", version)
         self.sh(self.user, "push", "-q", "origin", branch, "--tags")
 
+    def merge_pr(self, head, base):
+        self.on(base)
+        self.sh(self.user, "merge", "-q", "--no-ff", "-m", f"Merge pull request from {head}", f"origin/{head}")
+        self.sh(self.user, "push", "-q", "origin", base)
+
+    def cut(self, branch, version, channel):
+        """What the release job does to the branch after a release PR merges, short of building and publishing."""
+        self.on(branch)
+        cl, plg = self.user / "CHANGELOG.md", self.user / self.PLG
+        assert run("stamp", "--changelog", cl, "--version", version, *(["--beta"] if channel == "beta" else [])) == 0
+        plg.write_text(re.sub(r'<!ENTITY version   "[^"]*"', f'<!ENTITY version   "{version}"', plg.read_text()))
+        assert run("render", "--plg", plg, "--changelog", cl, "--channel", channel) == 0
+        self.sh(self.user, "commit", "-qam", f"chore(release): {version} [skip ci]")
+        self.sh(self.user, "tag", version)
+        self.sh(self.user, "push", "-q", "origin", branch, "--tags")
+
     def run(self, script, **env):
         self.sh(self.work, "fetch", "-q", "origin", "--tags")
         self.sh(self.work, "reset", "-q", "--hard")
@@ -900,12 +916,20 @@ def channels(tmp_path):
 
 
 def test_stable_pr_carries_an_urgent_master_fix_after_a_stable_release(channels):
-    channels.release("master", "2026.09.20", "- Stable twenty", "stable")
-    channels.run("plg_release_backmerge.sh", BASE="master", VERSION="2026.09.20")
+    """Once a beta release is in stable and merged back, beta is always ahead; that alone is no promotion."""
+    channels.commit("beta", "fix: beta fix")
+    channels.release("beta", "2026.09.21a", "- Beta fix", "beta")
+    channels.run("plg_release_pr.sh", CHANNEL="stable", BASE="master")
+    channels.merge_pr("release/stable", "master")
+    channels.cut("master", "2026.09.21", "stable")
+    channels.run("plg_release_backmerge.sh", BASE="master", VERSION="2026.09.21")
+    channels.commit("beta", "feat: unreleased beta work")
     channels.commit("master", "fix: urgent data-loss fix")
     out = channels.run("plg_release_pr.sh", CHANNEL="stable", BASE="master")
     assert "nothing to release" not in out
     assert channels.unreleased("release/stable") == ["- fix: urgent data-loss fix"]
+    assert "feat: unreleased beta work" not in channels.log("origin/master..origin/release/stable")
+    assert channels.check("release/stable", "stable", "master") == 0
 
 
 def test_stable_pr_promotes_the_beta_release_not_unreleased_beta_work(channels):
