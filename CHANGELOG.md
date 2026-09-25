@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- fix: a beta change while stable waits
+
 ## 2026.09.25a (beta)
 
 - The first bullet, reworded by hand
