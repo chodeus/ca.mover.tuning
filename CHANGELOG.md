@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- fix: an urgent fix straight to master
+
 ## 2026.09.25
 
 - new: Releases go through a release PR per channel, with a beta channel
