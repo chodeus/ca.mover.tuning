@@ -480,6 +480,8 @@ def test_next_version_stable_is_the_bare_date_unless_taken_and_betas_take_letter
     assert pr.next_version(repo, "stable", "2026.09.05") == "2026.09.05c"
     assert pr.next_version(repo, "beta", "2026.09.05") == "2026.09.05c"
     assert pr.next_version(repo, "stable", "2026.09.04") == "2026.09.04a"
+    sh("tag", "2026.09.07.1200")
+    assert pr.next_version(repo, "beta", "2026.09.07") == "2026.09.07a", "an old .HHMM tag is not a letter release"
     sh("tag", "2026.09.06z")
     with pytest.raises(pr.ChangelogError):
         pr.next_version(repo, "beta", "2026.09.06")
