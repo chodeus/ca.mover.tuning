@@ -44,6 +44,11 @@
 - fix: a change pushed after the notes were edited
 - fix: clearer installer message (test)
 
+## 2026.09.25
+
+- new: Releases go through a release PR per channel, with a beta channel
+- fix: The installer's messages read more clearly
+
 ## 2026.09.19
 
 - new: Added full localization across the plugin, including mover-tuning settings, scheduling, share options, notifications, accessibility text, and command-line guidance. (masterwishx - Thanks to chodeus for the PRs)
