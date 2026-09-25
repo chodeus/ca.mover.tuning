@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.09.25a (beta)
 
 - wip: next_version test covers an .HHMM-only day
 - wip: release workflow
