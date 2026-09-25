@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.09.25a (beta)
 
 - The first bullet, reworded by hand
 - wip: promotion and merge-back rework
