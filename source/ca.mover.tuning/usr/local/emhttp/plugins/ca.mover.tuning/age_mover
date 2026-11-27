@@ -20,20 +20,19 @@
 # For all share with 'Use Cache' setting set to "only", we use 'du' or 'zfs list' to
 # get total size of that share directory.
 
-# The list is sorted by "Use cache", increasing age, pool, and file inode, giving priority for being
-# on cache to "cache only" shares, then "cache prefer" by moving newest from array to cache and older to array,
-# and finally to "cache yes" share by moving only from cache to array.
+# The list is sorted by pool, "Use cache", newest first and file inode, then "cache yes" files are sorted again
+# in the Move order (oldest first by default). "cache prefer" files move from the secondary storage to their pool,
+# newest first, and never back; "cache yes" files move only from the pool to the secondary storage.
 # Please note that if age setting is set to something else than "Auto (smart cache)" this script is actually
 # dumb and do not check for size and free space and rely on your own calculations.
 # Files at the top level of the cache or an array disk (i.e not in a share) are never moved.
 
-# The list is then passed to original unraid mover.
+# Files are then moved with rsync or Unraid's move, as the Move files tool setting says, and synchronized with rsync.
 # For each file, if the file is not "in use" by any process (as detected by an exclusive file lease,
-# with fuser as a compatibility fallback, and when Perl is missing, as before Unraid 6.11.0),
-# then the file is moved, and upon success, deleted from the source disk.  If the file already
-# exists on the target, it is not moved and the sourceis not deleted.  All meta-data of moved
-# files/directories is preserved: permissions, ownership, extended attributes, and access/modified
-# timestamps.
+# with fuser as a compatibility fallback, and when Perl is missing, as before Unraid 6.11.0), or the
+# setting to move files in use is on, then the file is moved, and upon success, deleted from the source disk.
+# Unraid's move skips a file that already exists on the target and keeps its source; rsync replaces the target.
+# rsync keeps permissions, ownership, extended attributes and the modified time, but not the access time.
 
 # If an error occurs in copying a file, the partial file, if present, is deleted and the
 # operation continues on to the next file.
@@ -53,6 +52,12 @@ UNRAIDCFGFILE="/boot/config/share.cfg"
 MOVERTUNINGCFGFILE="/boot/config/plugins/ca.mover.tuning/ca.mover.tuning.cfg"
 MOVERTUNING_OVERRIDE_CFGFOLDER="/boot/config/plugins/ca.mover.tuning/shareOverrideConfig"
 MOVERTUNING_DEFAULT_CFGFILE="/usr/local/emhttp/plugins/ca.mover.tuning/default.cfg"
+# one line per copy the sync made: "size|mtime|ctime|storage/share/path", as stat saw the copy on the secondary storage;
+# never in a log folder: debug_mover packs the files there
+SYNC_RECORD="/tmp/ca.mover.tuning-sync/sync.record"
+# a record line less its first three fields is its key, storage/share/path
+SYNC_RECORD_KEY="^([^|]*[|]){3}"
+SYNC_RECORD_OK=""
 LOGMODE=$(grep '^logging=' "$MOVERTUNINGCFGFILE" | cut -d '"' -f 2)
 LOGLEVEL=$(case "$LOGMODE" in yes) echo 1 ;; fileOnly) echo 2 ;; no) echo 0 ;; *) echo 1 ;; esac)
 DEBUGMODE=$(grep '^debuglogging=' "$MOVERTUNINGCFGFILE" | cut -d '"' -f 2)
@@ -2007,6 +2012,65 @@ holdPartialHardlinks() {
     fi
 }
 
+# the record, with the changes a stopped run left applied; SYNC_RECORD_OK=no when it cannot be read or updated: the run
+# then records nothing
+syncRecordLoad() {
+    local dir=${SYNC_RECORD%/*}
+    SYNC_RECORD_OK=yes
+    # /tmp is open to all: a folder or link someone else made there, or one others can write to, is never written through
+    if { [ -d "$dir" ] || mkdir -m 700 "$dir" 2>/dev/null; } && [ ! -L "$dir" ] && [ -O "$dir" ] &&
+        [ -z "$(find "$dir" -maxdepth 0 -perm /022)" ]; then
+        # the temporary records (mktemp's six characters) of a merge a stop cut short
+        rm -f -- "$SYNC_RECORD".??????
+        # a record that is there but not a file is never read as an empty one
+        { [ ! -e "$SYNC_RECORD" ] || [ -f "$SYNC_RECORD" ]; } && syncRecordMerge && return
+    fi
+    SYNC_RECORD_OK=no
+    mvlogger "Warning: cannot read or update the sync record $(qp "$SYNC_RECORD"): this run records nothing"
+}
+
+# applies the changes file ("+" and a record line, or "-" and a key; a key's last line wins) to the record, through a temporary file
+syncRecordMerge() {
+    local changes="$SYNC_RECORD.changes" record=$SYNC_RECORD tmp
+    [ -e "$changes" ] || return 0
+    [ -f "$changes" ] || return 1
+    [ -e "$record" ] || record=/dev/null
+    tmp=$(mktemp "$SYNC_RECORD.XXXXXX") || return 1
+    if ! awk -v KEY="$SYNC_RECORD_KEY" '
+        function key(l) { sub(KEY, "", l); return l }
+        FILENAME == ARGV[1] { k = substr($0, 2); if ($0 ~ /^[+]/) { line[key(k)] = k } else line[k] = ""; next }
+        !(key($0) in line)
+        END { for (k in line) if (line[k] != "") print line[k] }' "$changes" "$record" >"$tmp" || ! mv -f "$tmp" "$SYNC_RECORD"; then
+        rm -f "$tmp"
+        return 1
+    fi
+    rm -f "$changes"
+}
+
+# notes name $1 (share/path) of a verified file row in the record's changes: a sync to the secondary storage adds its copy,
+# a move takes out the keys of the copy it took and of the one it replaced
+syncRecordNote() {
+    local key=${DESTINATION#/mnt/}/$1 line from=${SOURCE#/mnt/}
+    [ "$SYNC_RECORD_OK" = yes ] && [ "$FILETYPE" = f ] || return 0
+    case "$ACTION" in
+    "sync from primary" | "sync unattended to secondary")
+        # a copy gone again, or one rsync reported an error for ($2), is left out, so a later run syncs it again
+        [ "$2" = 0 ] || return 0
+        line=$(stat -c '%s|%.9Y|%.9Z' "$DESTINATION/$1" 2>/dev/null) || return 0
+        line="+$line|$key"
+        ;;
+    "move "*)
+        # the record names a copy on an array disk, or on /mnt/user, by user0
+        [[ ! "$from" =~ ^(disk[0-9]+|user)$ ]] || from=user0
+        line="-$from/$1"$'\n'"-$key"
+        ;;
+    *) return 0 ;;
+    esac
+    printf '%s\n' "$line" 2>/dev/null >>"$SYNC_RECORD.changes" && return
+    SYNC_RECORD_OK=no
+    mvlogger "Warning: cannot write to $(qp "$SYNC_RECORD.changes"): this run records nothing more in the sync record"
+}
+
 decideMoveActions() {
     if [ -e $SOFTSTOPFILE ]; then
         [ $SOFTSTOP_ACK = true ] || mvlogger "Soft Stopping requested" && SOFTSTOP_ACK=true
@@ -2025,6 +2089,8 @@ decideMoveActions() {
         getMoverSettings "$MOVERTUNINGCFGFILE"
         mvlogger "------------------------------------------------------------------------"
     fi
+
+    syncRecordLoad
 
     ## Loop Filtered Filelist and for each file decide to move to/from the array
     # rows with the 9999999999 mtime only reserve space (cache:only shares, skipped files): not counted as files
@@ -2880,6 +2946,7 @@ processTheMoves() {
     local -A STAGED_OK=()
     local -A STAGED_VANISHED=()
     local -A STAGED_INUSE=()
+    local -a noted=()
     local -A TOP_SEEN=()
     local -a TOP_FOLDERS=()
     local -A DATASET_DEST=()
@@ -3129,6 +3196,7 @@ processTheMoves() {
             # Unraid move exits 0 even when it fails or skips an existing target, so check every name
             if [ "$TESTMODE" != "yes" ]; then
                 arrived=0
+                noted=()
                 for f in "${SYNCED_FILES_ARR[@]}"; do
                     rel=${f#"$SOURCE/./"}
                     reason=""
@@ -3156,10 +3224,12 @@ processTheMoves() {
                         continue
                     fi
                     arrived=$((arrived + 1))
+                    noted+=("$rel")
                 done
                 left=$((arrived + vanished))
                 # rsync never gets a name that was already gone, so any exit code is its own error, except 24 when names vanished mid-transfer
                 if [ "$rc" != 0 ] && ! { [ "$rc" = 24 ] && [ "$vanished" -gt 0 ]; }; then tool_error=1; fi
+                for rel in "${noted[@]}"; do syncRecordNote "$rel" "$tool_error"; done
                 # the group's bytes count as moved once no name is left on the source and one arrived: until then
                 # its space was not freed, and a group that was entirely gone moved nothing
                 if [ "$STAGE_ROW" = 0 ]; then
@@ -3386,6 +3456,9 @@ processTheMoves() {
     fi
     trap - TERM HUP INT
     for top in "${TOP_FOLDERS[@]}"; do cleanTopFolder "$top"; done
+    if [ "$SYNC_RECORD_OK" = yes ] && ! syncRecordMerge; then
+        mvlogger "Warning: cannot update the sync record $(qp "$SYNC_RECORD"): the next run tries again"
+    fi
 
     if [ "$TESTMODE" != "yes" ] && [ ! -e $SOFTSTOPFILE ] && [ "$SYNCFAILED" = 0 ] &&
         awk -F'|' '$11 ~ /^sync / { found = 1; exit } END { exit !found }' "$MOVER_ACTIONLIST"; then

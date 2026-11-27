@@ -205,6 +205,8 @@ LOGFOLDER=$T MOVER_LOG=$T/log MOVER_DEBUG_LOG=$T/dlog
 MOVER_STATUS=$T/mover.ini STATS_FILE=$T/stats MOVER_ACTIONLIST=$T/actions SOFTSTOPFILE=$T/softstop SOFTSTOP_ACK=false
 PAUSEFILE=$T/pause MOVINGFILE=$T/moving PIDFILE=$T/pid MOVERTUNINGCFGFILE=$T/cfg MOVERTUNING_OVERRIDE_CFGFOLDER=$T/overrides
 MOVERTUNING_DEFAULT_CFGFILE=$PLUGIN/default.cfg FILES_IN_USE_HELPER=$PLUGIN/files_in_use NOW=2026-01-02T030405 UNRAID_VERSION=7.2.0
+SYNC_RECORD=$T/record/sync.record
+eval "$(grep '^SYNC_RECORD_KEY=' "$AM")"
 export TZ=UTC # NOW turns into the sync date in local time
 DEBUGLOGGING=no
 [ "${AGE_MOVER_DEBUG:-0}" != 2 ] || DEBUGLOGGING=fileOnly
@@ -235,7 +237,7 @@ begin() {
     CASE=$1
     shift
     rm -rf "${ROOTS[@]}" "$SOFTSTOPFILE" "$PAUSEFILE" "$T/row_error" "$T/zfs" "$T/zfs".* "$T/after_rsync" "$T/bin/rsync" \
-        "$MOVER_LOG" "$NOTIFY_LOG" "$NOTIFY_LOG.hook" "$T/pid.kept" "$TMPDIR"/ca.mover.tuning.*
+        "$MOVER_LOG" "$NOTIFY_LOG" "$NOTIFY_LOG.hook" "$T/pid.kept" "$TMPDIR"/ca.mover.tuning.* "$T/record"
     mkdir -p /mnt/cache /mnt/user0
     fresh "$@"
 }
@@ -298,7 +300,10 @@ row() {
 }
 
 # list: the rows on stdin as the action list; as in the planner, a hardlink group's size counts on its first name only
-list() { { echo "$HDR"; awk -F'|' -v OFS='|' '$9 > 1 && seen[$12 "|" $9 "|" $10 "|" $4]++ { $5 = 0 } 1'; } >"$MOVER_ACTIONLIST"; }
+list() {
+    { echo "$HDR"; awk -F'|' -v OFS='|' '$9 > 1 && seen[$12 "|" $9 "|" $10 "|" $4]++ { $5 = 0 } 1'; } >"$MOVER_ACTIONLIST" ||
+        echo "list: awk or the write of the action list failed" >>"$T/row_error"
+}
 
 # run_moves [stderr]: processTheMoves after the totals the planner counts per direction (a staged move to the primary is
 # counted by its sync row); stderr must be exactly the given text, nothing by default
