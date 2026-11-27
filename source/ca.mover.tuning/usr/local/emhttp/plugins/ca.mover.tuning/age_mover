@@ -1335,11 +1335,26 @@ scriptLabel() {
     echo "$file"
 }
 
+# removes the temporary copies of installLink that an earlier run left and a share's find put in STALE_TEMPS; test mode
+# names them
+removeStaleTemps() {
+    local f
+    [ ! -s "$STALE_TEMPS" ] || while IFS= read -r -d '' f; do
+        if [ "$TESTMODE" = yes ]; then
+            mvlogger "TEST MODE: Would remove $(qp "$f"), a temporary copy an earlier run left"
+        else
+            logged rm -f -- "$f" && mvlogger "Removed $(qp "$f"), a temporary copy an earlier run left"
+        fi
+    done <"$STALE_TEMPS"
+    rm -f -- "$STALE_TEMPS"
+}
+
 # prints 1 when the list holds modified times, as it does unless the CTIME or ATIME setting in force is on
 listsMtime() { [ "$CTIME" = yes ] || [ "$ATIME" = yes ] || echo 1; }
 
 createFilteredFilelist() {
     mvlogger "$(titleLine 'FILTERING FILES' '*')"
+    STALE_TEMPS=$FILTERED_FILELIST.stale
 
     # create a file containing the list off all shareUseCache yes or prefer whith this format:
     echo "PRIMARYSTORAGENAME|SECONDARYSTORAGENAME|SHARENAME|SHAREUSECACHE|MODIFYTIME|PRIMARYSIZETHRESH|POOLUSED|FILESIZE|SPARSENESS|NBLINKS|INODE|FILETYPE|FILEPATH" >"$FILTERED_FILELIST"
@@ -1666,6 +1681,8 @@ createFilteredFilelist() {
         else
             FINDSTR+=" -type f"
         fi
+        # a temporary copy an earlier run left goes to removeStaleTemps, never to the list
+        FINDSTR+=" \( -not \( -type f -name '$(installTmpName '??????')' \) -o -fprint0 \"\$STALE_TEMPS\" -false \)"
 
         # a fixed age filter holds younger files back; they stay due for syncing, also on a Move All run that lists without it
         AGE_WINDOW=0
@@ -1883,6 +1900,7 @@ createFilteredFilelist() {
         if [ -d "$SHAREPATH" ] || [[ "$SHAREUSECACHE" = "prefer" && "$COUNT_SECONDARY_FILES" -gt 0 ]] || [ "$REBALANCESHARES" = "yes" ]; then
             [ "$CTIME" == "yes" ] && mvlogger "Filtering $SHARENAME files... (can take a moment)"
             eval "${FINDSTR}>>${FILTERED_FILELIST}"
+            removeStaleTemps
             mvlogger "Updated Filtered filelist: $FILTERED_FILELIST for $SHARENAME"
         fi
     done
@@ -2611,6 +2629,188 @@ leftForDiffer() {
     remaining_done "$NBFILES" "$FILESIZE"
 }
 
+# a row onto the primary, which must not replace a different file there: the share shows that one
+towardPrimary() {
+    [[ "$ACTION" = "move from secondary" || "$ACTION" = "sync from secondary" || "$ACTION" = "move unattended to primary" ]]
+}
+
+# its file rows; installNoReplace moves them with rsync
+ontoPrimary() { towardPrimary && [ "$FILETYPE" = f ]; }
+
+# a row Unraid's move takes: a sync always goes to rsync
+byUnraidMove() { [[ "$ACTION" =~ "move" && "$MOVE_FILES_TOOL" = "move" ]]; }
+
+# logs the names in DIFFERS (listDiffer caps them) and leaves the row, with GONE of its names gone from the source; a
+# staged move leaves the count to its sync row
+keptForDiffer() {
+    local rel
+    for rel in "${DIFFERS[@]}"; do
+        listDiffer "Left where it is: $(qp "$SOURCE/$rel") differs from the file already at $(qp "$DESTINATION/$rel"), which the share shows; remove the copy you do not want"
+    done
+    if [ "$STAGE_ROW" = 1 ]; then
+        STAGED_KEPT[$chain_key]=$GONE
+        return
+    fi
+    leftForDiffer PRIMARYCONFLICTFILES "$GONE"
+}
+
+# runs command $@ with its errors in the mover log: on stderr they reach syslog only when cron pipes them there
+logged() {
+    local out rc=0 line
+    out=$("$@" 2>&1 >/dev/null) || rc=$?
+    [ -z "$out" ] || while IFS= read -r line; do mvlogger "$line"; done <<<"$out"
+    return "$rc"
+}
+
+# Copies an ontoPrimary row's present names, never over a file: per filesystem, a temporary copy linked to each missing
+# name (DIFFERS: those a different file took meanwhile); a move then removes matching sources, none if DIFFERS has one
+installNoReplace() {
+    local f rel rc=0 need=() have=() dirs=()
+    local -A seen=() tmp_of=()
+    DIFFERS=() INSTALL_TMPS=()
+    ! presentHeld || return 1
+    for f in "${present[@]}"; do
+        rel=${f#"$SOURCE/./"}
+        if [ -e "$DESTINATION/$rel" ] && same_copy "$SOURCE/$rel" "$DESTINATION/$rel"; then
+            have+=("$rel")
+            continue
+        fi
+        need+=("$rel")
+        [ -n "${seen[${rel%/*}]}" ] || { seen[${rel%/*}]=1; dirs+=("${rel%/*}"); }
+    done
+    if [ ${#need[@]} -gt 0 ]; then
+        trap installStop TERM HUP INT
+        for rel in "${need[@]}"; do installLink "$rel" || rc=$?; done
+        logged rm -f -- "${INSTALL_TMPS[@]}"
+        trap - TERM HUP INT
+        # the folders as rsync --relative leaves them, with the source's mode, owner and date; never where a file is
+        for f in "${!dirs[@]}"; do
+            [ -d "$DESTINATION/${dirs[f]}" ] && dirs[f]=$SOURCE/./${dirs[f]} || unset 'dirs[f]'
+        done
+        [ ${#dirs[@]} -eq 0 ] ||
+            logged rsync --archive --xattrs --relative --no-recursive --dirs "${dirs[@]}" "$DESTINATION/" || rc=1
+    fi
+    if [[ "$ACTION" =~ "move" ]] && [ ${#DIFFERS[@]} -eq 0 ]; then
+        # as rsync --remove-source-files: a name changed since its copy stays
+        for f in "${present[@]}"; do
+            rel=${f#"$SOURCE/./"}
+            ! same_copy "$SOURCE/$rel" "$DESTINATION/$rel" || logged rm -f -- "$SOURCE/$rel" || rc=1
+        done
+    fi
+    # for keptForDiffer: names can go during the copy
+    GONE=0
+    for f in "${SYNCED_FILES_ARR[@]}"; do [ -e "${f//\/.\//\/}" ] || GONE=$((GONE + 1)); done
+    return "$rc"
+}
+
+# installNoReplace's stop: ends its copy, which a pause may hold, before the temporary names go
+installStop() {
+    local pids
+    if [ -n "$INSTALL_PID" ]; then
+        mapfile -t pids < <(copyPids)
+        [ ${#pids[@]} -eq 0 ] || kill -TERM "${pids[@]}" 2>/dev/null
+        [ ${#pids[@]} -eq 0 ] || kill -CONT "${pids[@]}" 2>/dev/null
+        wait "$INSTALL_PID"
+    fi
+    # one mktemp just made, before installLink noted it
+    case $install_tmp in */"$(installTmpName '')"??????) INSTALL_TMPS+=("$install_tmp") ;; esac
+    rm -f -- "${INSTALL_TMPS[@]}"
+    exit 143
+}
+
+# whether a folder on the primary on the way to name $1 of a row there is a link, where a copy would land, maybe on the
+# source; for a folder row also anything but a folder there or at $1, which rsync would replace
+placeHeld() {
+    local p=$DESTINATION rest=${1%/*}/
+    [ "$FILETYPE" = f ] || rest=$1/
+    while [ -n "$rest" ]; do
+        p+=/${rest%%/*}
+        rest=${rest#*/}
+        [ ! -L "$p" ] || return 0
+        [ "$FILETYPE" = f ] || [ ! -e "$p" ] || [ -d "$p" ] || return 0
+    done
+    return 1
+}
+
+# whether a present name of the row meets placeHeld; the arrival check reports each one
+presentHeld() {
+    local f
+    for f in "${present[@]}"; do ! placeHeld "${f#"$SOURCE/./"}" || return 0; done
+    return 1
+}
+
+# installNoReplace's link of name $1 to its filesystem's copy (tmp_of), made first; ln refuses a name something holds
+installLink() {
+    local d=$DESTINATION/${1%/*} dev install_tmp err
+    [ -d "$d" ] || installMkdir "${1%/*}" || return 1
+    dev=$(stat -L -c %d -- "$d" 2>&1) || { mvlogger "$dev"; return 1; }
+    if [ -z "${tmp_of[$dev]+x}" ]; then
+        tmp_of[$dev]=""
+        install_tmp=$(mktemp -- "$d/$(installTmpName XXXXXX)" 2>&1) || { mvlogger "$install_tmp"; return 1; }
+        INSTALL_TMPS+=("$install_tmp")
+        installJoin "$install_tmp" "$dev" || installCopy "$install_tmp" || return
+        tmp_of[$dev]=$install_tmp
+    fi
+    # a failed copy returned its code once, for the name that made it; a name gone from the source meanwhile stays gone
+    [ -n "${tmp_of[$dev]}" ] && [ -e "$SOURCE/$1" ] || return 0
+    err=$(ln -T -- "${tmp_of[$dev]}" "$DESTINATION/$1" 2>&1) && return
+    if [ -e "$DESTINATION/$1" ] || [ -L "$DESTINATION/$1" ]; then
+        same_copy "$SOURCE/$1" "$DESTINATION/$1" || DIFFERS+=("$1")
+        return 0
+    fi
+    mvlogger "$err"
+    return 1
+}
+
+# installLink's temporary name with tail $1 (mktemp's or a pattern's), which installStop and the planner also match
+installTmpName() { printf '.ca.mover.tuning.%s' "$1"; }
+
+# makes folder $1 of the share on the primary, each missing level with its source folder's owner and mode at once, as
+# rsync does: a stop before the closing folder pass leaves them so
+installMkdir() {
+    local p="" rest=$1/
+    while [ -n "$rest" ]; do
+        p+=${p:+/}${rest%%/*}
+        rest=${rest#*/}
+        [ ! -d "$DESTINATION/$p" ] || continue
+        logged mkdir -- "$DESTINATION/$p" &&
+            logged chown --reference="$SOURCE/$p" -- "$DESTINATION/$p" &&
+            logged chmod --reference="$SOURCE/$p" -- "$DESTINATION/$p" || return 1
+    done
+}
+
+# as rsync --hard-links: links temporary name $1 to a name of the group already on the primary on filesystem $2
+installJoin() {
+    local h
+    for h in "${have[@]}"; do
+        [ "$(stat -c %d -- "$DESTINATION/$h" 2>/dev/null)" = "$2" ] || continue
+        # $1 is this run's own; a name rewritten since its check is not joined
+        ln -fT -- "$DESTINATION/$h" "$1" 2>/dev/null && same_copy "$SOURCE/$h" "$1" && return
+    done
+    return 1
+}
+
+# copies the row's file to $1 from the first of its present names still there; 24 when every one is gone, as rsync's
+# vanished files
+installCopy() {
+    local f
+    for f in "${present[@]}"; do
+        f=${f//\/.\//\/}
+        [ -e "$f" ] || continue
+        if [ "$DEBUGLEVEL" != 0 ]; then
+            qpAll RSYNC_CMD_LOG rsync --archive --xattrs "$f" "$1"
+            mvDebuglogger "Rsync cmd: $RSYNC_CMD_LOG, then linked to each name missing on $(qp "$DESTINATION/")" "$rsync_action Action"
+        fi
+        # in the background, as a stop's trap waits for a command in hand, which a pause can hold
+        logged rsync --archive --xattrs "$f" "$1" &
+        INSTALL_PID=$!
+        wait "$INSTALL_PID" && INSTALL_PID="" && return
+        INSTALL_PID=""
+        [ ! -e "$f" ] || return 1
+    done
+    return 24
+}
+
 # Takes names ($1) and bytes ($2) that are no longer waiting off the remaining-work counters of this row's direction.
 remaining_done() {
     if [[ "$ACTION" =~ "unattended" ]]; then
@@ -3188,17 +3388,9 @@ processTheMoves() {
             fi
 
             # a different file already at a name's place on the primary is the one the share shows: no copy from the secondary
-            # or unattended storage replaces it, whichever tool moves it; a staged move leaves the count to its sync row
-            if [[ "$ACTION" = "move from secondary" || "$ACTION" = "sync from secondary" || "$ACTION" = "move unattended to primary" ]] &&
-                [ "$FILETYPE" = "f" ] && differentTargets && [ ${#DIFFERS[@]} -gt 0 ]; then
-                for rel in "${DIFFERS[@]}"; do
-                    listDiffer "Left where it is: $(qp "$SOURCE/$rel") differs from the file already at $(qp "$DESTINATION/$rel"), which the share shows; remove the copy you do not want"
-                done
-                if [ "$STAGE_ROW" = 1 ]; then
-                    STAGED_KEPT[$chain_key]=$GONE
-                    continue
-                fi
-                leftForDiffer PRIMARYCONFLICTFILES "$GONE"
+            # or unattended storage replaces it, whichever tool moves it
+            if ontoPrimary && differentTargets && [ ${#DIFFERS[@]} -gt 0 ]; then
+                keptForDiffer
                 continue
             fi
 
@@ -3235,8 +3427,9 @@ processTheMoves() {
 
             rc=0
             MOVE_OUT=""
+            DIFFERS=()
             # Check if action and move files tool is unraid move
-            if [[ "$ACTION" =~ "move" && "$MOVE_FILES_TOOL" = "move" ]]; then
+            if byUnraidMove; then
                 if [ "$TESTMODE" = "yes" ]; then
                     mvlogger "TEST MODE: Would move using Unraid move utility"
                 else
@@ -3254,19 +3447,23 @@ processTheMoves() {
                 if [ "$TESTMODE" = "yes" ]; then
                     mvlogger "TEST MODE: Would $rsync_action using rsync utility"
                 else
-                    # one quoted token per argv element, like SYNCED_FILES above: [*] joins the
-                    # paths with spaces, and the anonymiser cannot tell where one ends
-                    if [ "$DEBUGLEVEL" != 0 ]; then
-                        qpAll RSYNC_CMD_LOG "${RSYNC_CMD[@]}"
-                        mvDebuglogger "Rsync cmd: $RSYNC_CMD_LOG, $rsync_action $filetype: $SYNCED_FILES, Dest: $(qp "$DESTINATION/")" "$rsync_action Action"
-                    fi
                     # Perform rsync. relative paths and hardlinks
                     if [ ${#SYNCED_FILES_ARR[@]} -gt 0 ]; then
                         if [ ${#present[@]} -gt 0 ]; then
                             copyWatchStart rsync "${present[@]}"
-                            # rsync's errors join the mover log: on stderr they reach syslog only when cron pipes them there
-                            rsync_err=$("${RSYNC_CMD[@]}" "${present[@]}" "$DESTINATION/" 2>&1 >/dev/null) || rc=$?
-                            [ -n "$rsync_err" ] && while IFS= read -r line; do mvlogger "$line"; done <<<"$rsync_err"
+                            if ontoPrimary; then
+                                installNoReplace || rc=$?
+                            elif towardPrimary && presentHeld; then
+                                rc=1
+                            else
+                                # one quoted token per argv element, like SYNCED_FILES above: [*] joins the
+                                # paths with spaces, and the anonymiser cannot tell where one ends
+                                if [ "$DEBUGLEVEL" != 0 ]; then
+                                    qpAll RSYNC_CMD_LOG "${RSYNC_CMD[@]}"
+                                    mvDebuglogger "Rsync cmd: $RSYNC_CMD_LOG, $rsync_action $filetype: $SYNCED_FILES, Dest: $(qp "$DESTINATION/")" "$rsync_action Action"
+                                fi
+                                logged "${RSYNC_CMD[@]}" "${present[@]}" "$DESTINATION/" || rc=$?
+                            fi
                         fi
                     else
                         mvlogger_t "Error: No files found to move for %s" "failure" "$(qp "$SOURCE/$FILEPATH")"
@@ -3275,6 +3472,11 @@ processTheMoves() {
                 fi
             fi
             copyWatchStop
+            # a different file took a name's place on the primary during the transfer: the row stays, as for one there before
+            if [ ${#DIFFERS[@]} -gt 0 ]; then
+                keptForDiffer
+                continue
+            fi
             # test mode notes what a real move takes off the source: every file, and with Unraid's move a folder
             # its rmdir would take, as move leaves any other
             if [ "$TESTMODE" = "yes" ] && [[ "$ACTION" =~ "move" ]] && { [ "$FILETYPE" = "f" ] || [ "$MOVE_FILES_TOOL" = "move" ]; }; then
@@ -3300,6 +3502,10 @@ processTheMoves() {
                     reason=""
                     if [ -n "${GONE_BEFORE[$f]}" ]; then
                         reason="Gone from the source before its turn"
+                    # Unraid's move takes its own way there
+                    elif ! byUnraidMove && towardPrimary && placeHeld "$rel"; then
+                        reason="Left where it is, as a folder on its way on the primary is a link, which the mover does not follow"
+                        [ "$FILETYPE" = f ] || reason="Left where it is, as the primary holds a file or a link at its place or that of a folder on its way"
                     elif [ ! -e "$DESTINATION/$rel" ]; then
                         reason="Did not arrive"
                     # a synced file counts only when the copy matches: rsync --archive keeps size and mtime
