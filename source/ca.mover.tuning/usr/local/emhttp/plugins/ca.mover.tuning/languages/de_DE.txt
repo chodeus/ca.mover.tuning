@@ -13,6 +13,8 @@ mounted again, but the look for a file written to %s as it was mounted was cut s
 the remount was cut short, so it may not be mounted or may hide a file stop writes to the share, if zfs mount lists it at %s run zfs unmount %s, move anything in %s aside, zfs mount %s, then move it back into %s without replacing a file already there keep both copies and compare them=das erneute Einhängen wurde abgebrochen, es ist also vielleicht nicht eingehängt oder verdeckt eine Datei: Schreibzugriffe auf die Freigabe stoppen, wenn zfs mount es unter %s auflistet, zfs unmount %s ausführen, alles in %s beiseite verschieben, zfs mount %s ausführen, dann alles zurück nach %s verschieben, ohne eine dort vorhandene Datei zu ersetzen: beide Kopien behalten und vergleichen
 All community developers=Alle Entwickler der Community
 %s files and %s folders were movedsynced, but rsync reported errors for them Check the Mover Tuning log=%s Dateien und %s Ordner wurden verschoben/synchronisiert, aber rsync hat dabei Fehler gemeldet. Bitte das Mover‑Tuning‑Protokoll prüfen.
+%s files were not synchronized synchronizing them would replace a different file on the secondary storage Check the Mover Tuning log=%s Dateien wurden nicht synchronisiert: ihre Synchronisation würde eine andere Datei auf dem Sekundärspeicher ersetzen. Siehe das Mover-Tuning-Protokoll.
+%s files were not moved or synchronized to the primary storage a different file is already in their place there, and the share shows that one Check the Mover Tuning log=%s Dateien wurden nicht auf den Primärspeicher verschoben oder synchronisiert: dort liegt bereits eine andere Datei an ihrer Stelle, und die Freigabe zeigt diese an. Siehe das Mover-Tuning-Protokoll.
 Allow force mover schedule to run during a parity checkrebuild=Erlaubt das erzwungene Ausführen der Datenverschiebung während einer Paritätsprüfung oder Wiederherstellung
 All plugin settings return to their defaults, including the Mover Tuning schedule, the forced move schedule and the cache watchdog, and the override settings of every share are deleted=Alle Plugin‑Einstellungen werden auf ihre Standardwerte zurückgesetzt, einschließlich des Mover‑Tuning‑Zeitplans, des Zeitplans für das erzwungene Verschieben und des Cache-Watchdogs, und die überschriebenen Einstellungen aller Freigaben werden gelöscht.
 Array → Cache=Speicherverbund → Cache
@@ -458,8 +460,11 @@ Youre welcome 😊 Thanks for using=Gern geschehen 😊 Danke für die Nutzung!
 <p>Lesen und Schreiben erfolgt weiterhin auf dem Primärspeicher. Optional kann die Synchronisation basierend auf einer maximalen Dateigröße verwendet werden.</p>
 <p><u>Hinweis:</u></p>
 <ul>
-  <li><strong>NUR geänderte Dateien</strong> seit der letzten Synchronisation werden <strong>synchronisiert</strong>.</li>
   <li><strong>NUR Dateien</strong>, die nach dem Lauf im Cache‑Pool bleiben, werden <strong>synchronisiert</strong>.</li>
+  <li>Eine Datei wird synchronisiert, wenn sie seit der letzten Synchronisation geändert wurde oder, unabhängig von ihrem Datum, wenn der Mover noch keine Kopie von ihr verzeichnet hat (eine umbenannte Datei oder eine neue, mit altem Datum hineinkopierte) oder wenn sie nicht mehr zur verzeichneten Kopie passt (eine durch eine Datei mit altem Datum ersetzte Datei; mit „CTIME (Statusänderungszeit) verwenden“ oder „ATIME verwenden“ fällt nur eine Größenänderung auf). Ohne Verzeichnis (beim ersten Lauf oder dem ersten nach einem Neustart zum Beispiel) prüft er jede Datei einmal; dieser Lauf kann so lange dauern wie eine erneute Synchronisation.</li>
+  <li>Eine Datei, die nur mangels verzeichneter Kopie synchronisiert wird, ersetzt nie eine andere Datei, die schon an ihrer Stelle auf dem Sekundärspeicher liegt: diese bleibt, wie sie ist, und das Protokoll nennt sie (höchstens 100 Namen pro Lauf, dann die Anzahl der übrigen). Verschieben Sie eine der beiden Dateien, um die Datei zu synchronisieren.</li>
+  <li>Mit einem Altersfilter wird eine neue Datei erst synchronisiert, wenn sie älter als die Tage des Filters ist.</li>
+  <li>Wird eine synchronisierte Datei auf dem Primärspeicher gelöscht oder umbenannt, bleibt ihre alte Kopie auf dem Sekundärspeicher und erscheint wieder in der Freigabe.</li>
 </ul>
 :end
 
@@ -475,7 +480,7 @@ Youre welcome 😊 Thanks for using=Gern geschehen 😊 Danke für die Nutzung!
 
 :mover_tune_resynchronizecache_plug:
 <p>Dies wird alle Dateien im Primärspeicher (Cache) sowohl auf dem Primär‑ als auch auf dem Sekundärspeicher (Array) erneut synchronisieren, sodass sie gesichert und durch Parität geschützt sind.</p>
-<p>Alle Dateien werden unabhängig von ihrer Änderungszeit erneut synchronisiert.</p>
+<p>Jede Datei, die die Filter auflisten, wird unabhängig von ihrer Änderungszeit erneut synchronisiert (die maximale Dateigröße der Synchronisation gilt weiterhin); eine abweichende Kopie auf dem Sekundärspeicher wird ersetzt. Eine Datei, die jünger als die Tage des Altersfilters ist, wird noch nicht aufgelistet.</p>
 <p>Gilt für die Freigaben, die synchronisieren – über <strong>Dateien des Primärspeichers mit dem Sekundärspeicher synchronisieren</strong> hier oder in den eigenen Mover‑Tuning‑Einstellungen einer Freigabe – und ist ausgegraut, solange keine Freigabe synchronisiert.</p>
 <p>Nach dem Verringern der Tage des Altersfilters oder dem Umstellen auf Nein oder Auto hier <strong>Einmal ausführen</strong> wählen, sonst werden die vom Filter zurückgehaltenen Dateien nicht synchronisiert.</p>
 <p>Dies kann ein sehr langer Vorgang sein. Die Einstellung „Einmal ausführen“ wird nach dem nächsten Durchlauf automatisch wieder auf <strong>Nein</strong> gesetzt. Ein Durchlauf im Testmodus lässt sie unverändert.</p>

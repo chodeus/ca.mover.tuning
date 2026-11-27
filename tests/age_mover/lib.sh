@@ -314,7 +314,7 @@ run_moves() {
         NR == FNR { if ($11 == "sync unattended to secondary") staged[path()] = 1; next }
         FNR == 1 { next }
         { d = "" }
-        $11 == "move from primary" || $11 == "sync from primary" { d = "p" }
+        $11 == "move from primary" || $11 == "sync from primary" || $11 == "sync unrecorded from primary" { d = "p" }
         $11 == "move from secondary" || $11 == "sync from secondary" { d = "s" }
         $11 ~ /unattended/ && !($11 == "move unattended to primary" && (path() in staged)) { d = "u" }
         d != "" { n[d ($14 == "d" ? "d" : "f")]++; sz[d] += $5 }

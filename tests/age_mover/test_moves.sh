@@ -94,7 +94,51 @@ for tool in rsync move; do
     counter REMAINING_UNATTENDED_SIZE 0
     log_has 'Synchronizing  "/mnt/cache/./sh/x/f.txt"  to  "/mnt/user0/"'
     log_has 'Set last sync date in config file/s: 1767323045 = 2026-01-02T030405'
+
+    begin "a different file on the primary is replaced by no move or sync from the secondary ($tool)" movefilesTool "$tool"
+    mk disk1 sh/p/f.txt sh/p/g.txt
+    { row 'move from secondary' f sh/p/f.txt; row 'sync from secondary' f sh/p/g.txt; } | list
+    mkdir -p /mnt/cache/sh/p
+    printf 'newer edit\n' | tee /mnt/cache/sh/p/f.txt >/mnt/cache/sh/p/g.txt
+    run_moves
+    check "the primary's files keep their content" "newer edit newer edit" "$(cat /mnt/cache/sh/p/f.txt /mnt/cache/sh/p/g.txt | paste -sd' ')"
+    holds disk1 sh sh/p sh/p/f.txt sh/p/g.txt
+    log_has 'Left where it is: "/mnt/disk1/sh/p/f.txt" differs from the file already at "/mnt/cache/sh/p/f.txt", which the share shows; remove the copy you do not want'
+    log_count 2 'Left where it is:'
+    counter PRIMARYCONFLICTFILES 2
+    counter NOTMOVEDFILES 0
+    counter SYNCFAILED 0
+    counter REMAINING_ARRAY_FILES 0
+
+    begin "a different file on the primary is replaced by no move from unattended storage, staged or not ($tool)" movefilesTool "$tool" synchronizeCache yes
+    mk other sh/x/f.txt sh/y/f.txt
+    { row 'move unattended to primary' f sh/x/f.txt; row 'sync unattended to secondary' f sh/x/f.txt; row 'move unattended to primary' f sh/y/f.txt; } | list
+    mkdir -p /mnt/cache/sh/x /mnt/cache/sh/y
+    printf 'newer edit\n' | tee /mnt/cache/sh/x/f.txt >/mnt/cache/sh/y/f.txt
+    run_moves
+    check "the primary's files keep their content" "newer edit newer edit" "$(cat /mnt/cache/sh/x/f.txt /mnt/cache/sh/y/f.txt | paste -sd' ')"
+    holds other sh sh/x sh/x/f.txt sh/y sh/y/f.txt
+    array_is
+    log_count 2 'Left where it is:'
+    log_lacks 'Not syncing'
+    counter PRIMARYCONFLICTFILES 2
+    counter NOTMOVEDFILES 0
+    counter SYNCFAILED 0
+    counter REMAINING_UNATTENDED_FILES 0
 done
+
+begin "a copy on the primary the same as the secondary's lets its move finish, and a folder row is never held for its folder there"
+mk disk1 sh/p/f.txt
+mkdir -p /mnt/disk1/sh/e /mnt/cache/sh/p /mnt/cache/sh/e
+cp -a /mnt/disk1/sh/p/f.txt /mnt/cache/sh/p/f.txt
+touch -d 2020-01-01 /mnt/cache/sh/e
+{ row 'move from secondary' f sh/p/f.txt; row 'move from secondary' d sh/e; } | list
+run_moves
+check "the secondary's copy is gone" no "$([ -e /mnt/disk1/sh/p/f.txt ] && echo yes || echo no)"
+log_has 'Moving "/mnt/disk1/./sh/e"'
+log_lacks 'Left where it is'
+counter PRIMARYCONFLICTFILES 0
+counter NOTMOVEDFILES 0
 
 # bash read drops a | that ends the row, which would skip the check on a name like a|
 for n in a.txt 'a|'; do

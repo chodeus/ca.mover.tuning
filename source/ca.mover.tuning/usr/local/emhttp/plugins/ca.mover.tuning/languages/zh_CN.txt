@@ -7,6 +7,8 @@
 
 %s files and %s folders representing %s could not be movedsynced by Mover Tuning plugin=Mover Tuning 插件未能移动/同步 %s 个文件和 %s 个文件夹，共 %s。
 %s files and %s folders were movedsynced, but rsync reported errors for them Check the Mover Tuning log=%s 个文件和 %s 个文件夹已移动/同步，但 rsync 报告了错误。请查看 Mover Tuning 日志。
+%s files were not synchronized synchronizing them would replace a different file on the secondary storage Check the Mover Tuning log=%s 个文件未同步：同步它们会替换次存储上的另一个文件。请查看 Mover Tuning 日志。
+%s files were not moved or synchronized to the primary storage a different file is already in their place there, and the share shows that one Check the Mover Tuning log=%s 个文件未移动或同步到主存储：那里的相同位置已有另一个文件，共享显示的是该文件。请查看 Mover Tuning 日志。
 Action=操作
 a file is hidden under it stop writes to the share, zfs unmount %s, move anything in %s aside, zfs mount %s, then move it back into %s without replacing a file already there keep both copies and compare them=其下有文件被遮盖：停止向该共享写入，运行 zfs unmount %s，将 %s 中的所有内容移到别处，运行 zfs mount %s，然后移回 %s，不要覆盖其中已有的文件：保留两份副本并加以比较
 mounted again, but the look for a file written to %s as it was mounted was cut short, so one may be hidden under it stop writes to the share, zfs unmount %s, move anything in %s aside, zfs mount %s, then move it back into %s without replacing a file already there keep both copies and compare them=已重新挂载，但对挂载期间写入 %s 的文件的检查被中断，其下可能有文件被遮盖：停止向该共享写入，运行 zfs unmount %s，将 %s 中的所有内容移到别处，运行 zfs mount %s，然后移回 %s，不要覆盖其中已有的文件：保留两份副本并加以比较
@@ -456,8 +458,11 @@ Youre welcome 😊 Thanks for using=不客气！😊 感谢使用！
 <p>读取和修改仍在主存储上进行。可以选择按最大大小同步文件。</p>
 <p><u>注意：</u></p>
 <ul>
-  <li><strong>仅同步</strong>自上次同步以来<strong>修改过的文件</strong>。</li>
   <li><strong>仅</strong>运行后仍留在缓存池中的<strong>文件</strong>会被<strong>同步</strong>。</li>
+  <li>文件在上次同步后被修改时会同步；无论其日期如何，Mover 尚未记录它的副本（例如被重命名的文件，或以旧日期复制进来的新文件），或它与已记录的副本不再一致（例如被旧日期文件替换的文件；开启“使用状态更改时间（CTIME）”或“使用访问时间（ATIME）”时，只能发现大小的变化）时，也会同步。没有记录时（例如首次运行，或重启后的首次运行），它会把每个文件检查一次；这次运行可能与重新同步一样耗时。</li>
+  <li>仅因没有已记录副本而同步的文件，绝不会替换次存储上已在其位置的另一个文件：该文件保持原样，日志会列出它（每次运行最多列出 100 个名称，其余只给出数量）。将两者之一移走即可同步该文件。</li>
+  <li>设置年龄过滤后，新文件要等到超过过滤天数后才首次同步。</li>
+  <li>在主存储上删除或重命名已同步的文件，会在次存储上留下旧副本，它会再次出现在共享中。</li>
 </ul>
 :end
 
@@ -473,7 +478,7 @@ Youre welcome 😊 Thanks for using=不客气！😊 感谢使用！
 
 :mover_tune_resynchronizecache_plug:
 <p>将主存储（缓存）上的文件重新同步到主存储和次存储（阵列），使其得到备份并受奇偶校验保护。</p>
-<p>所有文件都会重新同步，不考虑修改时间。</p>
+<p>过滤条件列出的每个文件都会重新同步，不考虑修改时间（同步最大大小仍然适用）；次存储上不同的副本会被替换。比年龄过滤天数更新的文件尚未被列出。</p>
 <p>作用于进行同步的共享：通过此处或共享自身 Mover Tuning 设置中的<strong>主存储文件同步到次存储</strong>启用。没有任何共享同步时显示为灰色。</p>
 <p>减少年龄过滤天数，或将其设为否或自动后，请在此选择<strong>运行一次</strong>，否则被该过滤条件暂缓的文件不会同步。</p>
 <p>这可能需要很长时间。“运行一次”设置会在下次运行后重置为<strong>否</strong>。测试模式下的运行不会重置它。</p>
