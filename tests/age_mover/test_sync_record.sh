@@ -93,16 +93,16 @@ old sh/l/1.txt sh/l/2.txt sh/l/3.txt
 mkdir -p /mnt/user0/sh/l
 for n in 1 2 3; do printf 'other\n' >/mnt/user0/sh/l/$n.txt; done
 plan sh/l/1.txt sh/l/2.txt sh/l/3.txt
-SYNCCONFLICT_LIST_MAX=2 run_moves
+DIFFER_LIST_MAX=2 run_moves
 log_count 2 'Not synchronized, a different file is already at'
-log_has 'Not synchronized either, for a different file already in their place: 1 more names, not listed'
+log_has 'Also left for a different file already in their place: 1 more names, not listed'
 counter SYNCCONFLICTFILES 3
 # the next run, with two of them
 fresh synchronizeCache yes
 plan sh/l/1.txt sh/l/2.txt
-SYNCCONFLICT_LIST_MAX=2 run_moves
+DIFFER_LIST_MAX=2 run_moves
 log_count 2 'Not synchronized, a different file is already at'
-log_lacks 'Not synchronized either'
+log_lacks 'Also left for'
 
 begin "a recorded file not changed since the last sync stays as it is" synchronizeCache yes
 mk cache sh/k.txt

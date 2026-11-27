@@ -8,6 +8,7 @@
 %s files and %s folders representing %s could not be movedsynced by Mover Tuning plugin=Mover Tuning 插件未能移动/同步 %s 个文件和 %s 个文件夹，共 %s。
 %s files and %s folders were movedsynced, but rsync reported errors for them Check the Mover Tuning log=%s 个文件和 %s 个文件夹已移动/同步，但 rsync 报告了错误。请查看 Mover Tuning 日志。
 %s files were not synchronized synchronizing them would replace a different file on the secondary storage Check the Mover Tuning log=%s 个文件未同步：同步它们会替换次存储上的另一个文件。请查看 Mover Tuning 日志。
+%s files were not moved or synchronized to the primary storage a different file is already in their place there, and the share shows that one Check the Mover Tuning log=%s 个文件未移动或同步到主存储：那里的相同位置已有另一个文件，共享显示的是该文件。请查看 Mover Tuning 日志。
 Action=操作
 a file is hidden under it stop writes to the share, zfs unmount %s, move anything in %s aside, zfs mount %s, then move it back into %s without replacing a file already there keep both copies and compare them=其下有文件被遮盖：停止向该共享写入，运行 zfs unmount %s，将 %s 中的所有内容移到别处，运行 zfs mount %s，然后移回 %s，不要覆盖其中已有的文件：保留两份副本并加以比较
 mounted again, but the look for a file written to %s as it was mounted was cut short, so one may be hidden under it stop writes to the share, zfs unmount %s, move anything in %s aside, zfs mount %s, then move it back into %s without replacing a file already there keep both copies and compare them=已重新挂载，但对挂载期间写入 %s 的文件的检查被中断，其下可能有文件被遮盖：停止向该共享写入，运行 zfs unmount %s，将 %s 中的所有内容移到别处，运行 zfs mount %s，然后移回 %s，不要覆盖其中已有的文件：保留两份副本并加以比较

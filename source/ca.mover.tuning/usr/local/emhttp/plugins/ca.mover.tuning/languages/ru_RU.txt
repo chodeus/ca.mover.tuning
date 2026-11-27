@@ -14,6 +14,7 @@ the remount was cut short, so it may not be mounted or may hide a file stop writ
 All community developers=Все разработчики сообщества
 %s files and %s folders were movedsynced, but rsync reported errors for them Check the Mover Tuning log=%s файлов и %s папок были перемещены/синхронизированы, но rsync сообщил об ошибках при их обработке. Проверьте журнал Mover Tuning.
 %s files were not synchronized synchronizing them would replace a different file on the secondary storage Check the Mover Tuning log=%s файлов не синхронизировано: их синхронизация заменила бы другой файл во вторичном хранилище. Проверьте журнал Mover Tuning.
+%s files were not moved or synchronized to the primary storage a different file is already in their place there, and the share shows that one Check the Mover Tuning log=%s файлов не перемещено и не синхронизировано в первичное хранилище: на их месте там уже есть другой файл, и общий ресурс показывает именно его. Проверьте журнал Mover Tuning.
 Allow force mover schedule to run during a parity checkrebuild=Разрешить запуск расписания принудительного перемещения во время проверки/восстановления четности
 All plugin settings return to their defaults, including the Mover Tuning schedule, the forced move schedule and the cache watchdog, and the override settings of every share are deleted=Все настройки плагина возвращаются к значениям по умолчанию, включая расписание Mover Tuning, расписание принудительного перемещения и наблюдение за кэшем, а переопределённые настройки всех шар удаляются.
 Array → Cache=Массив → Кэш

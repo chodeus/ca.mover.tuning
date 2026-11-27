@@ -31,7 +31,8 @@
 # For each file, if the file is not "in use" by any process (as detected by an exclusive file lease,
 # with fuser as a compatibility fallback, and when Perl is missing, as before Unraid 6.11.0), or the
 # setting to move files in use is on, then the file is moved, and upon success, deleted from the source disk.
-# Unraid's move skips a file that already exists on the target and keeps its source; rsync replaces the target.
+# Unraid's move skips a file that already exists on the target and keeps its source; rsync replaces a target on the
+# secondary storage unless the sync is only for want of a recorded copy. No tool replaces a different file on the primary.
 # rsync keeps permissions, ownership, extended attributes and the modified time, but not the access time.
 
 # If an error occurs in copying a file, the partial file, if present, is deleted and the
@@ -58,8 +59,8 @@ SYNC_RECORD="/tmp/ca.mover.tuning-sync/sync.record"
 # a record line less its first three fields is its key, storage/share/path
 SYNC_RECORD_KEY="^([^|]*[|]){3}"
 SYNC_RECORD_OK=""
-# a run's log names at most this many files left unsynchronized for a different file in their place
-SYNCCONFLICT_LIST_MAX=100
+# a run's log names at most this many files left for a different file in their place
+DIFFER_LIST_MAX=100
 LOGMODE=$(grep '^logging=' "$MOVERTUNINGCFGFILE" | cut -d '"' -f 2)
 LOGLEVEL=$(case "$LOGMODE" in yes) echo 1 ;; fileOnly) echo 2 ;; no) echo 0 ;; *) echo 1 ;; esac)
 DEBUGMODE=$(grep '^debuglogging=' "$MOVERTUNINGCFGFILE" | cut -d '"' -f 2)
@@ -96,7 +97,8 @@ VANISHEDFILES=0
 VANISHEDFOLDERS=0
 INUSEFILES=0
 SYNCCONFLICTFILES=0
-SYNCCONFLICTNAMES=0
+PRIMARYCONFLICTFILES=0
+DIFFERNAMES=0
 SYNCFAILED=0
 COUNT_SECONDARY_FILES=0
 overrideFlag=0
@@ -2590,6 +2592,12 @@ differentTargets() {
     done
 }
 
+# logs line $1 for a name left for a different file in its place, up to DIFFER_LIST_MAX names a run
+listDiffer() {
+    DIFFERNAMES=$((DIFFERNAMES + 1))
+    [ "$DIFFERNAMES" -gt "$DIFFER_LIST_MAX" ] || mvlogger "$1"
+}
+
 # Takes names ($1) and bytes ($2) that are no longer waiting off the remaining-work counters of this row's direction.
 remaining_done() {
     if [[ "$ACTION" =~ "unattended" ]]; then
@@ -2991,6 +2999,7 @@ processTheMoves() {
     local -A STAGED_OK=()
     local -A STAGED_VANISHED=()
     local -A STAGED_INUSE=()
+    local -A STAGED_KEPT=()
     local -a noted=()
     local -A TOP_SEEN=()
     local -a TOP_FOLDERS=()
@@ -3137,6 +3146,15 @@ processTheMoves() {
                 continue
             fi
 
+            # a chain whose staged move found a different file on the primary is left whole; its sync row counts it
+            if [ "$ACTION" = "sync unattended to secondary" ] && [ -n "${STAGED_KEPT[$chain_key]}" ]; then
+                gone=${STAGED_KEPT[$chain_key]}
+                PRIMARYCONFLICTFILES=$((PRIMARYCONFLICTFILES + NBFILES - gone))
+                VANISHEDFILES=$((VANISHEDFILES + gone))
+                remaining_done "$NBFILES" "$FILESIZE"
+                continue
+            fi
+
             # the sync row of a chain has nothing to sync unless its staged move delivered every name
             if [ "$ACTION" = "sync unattended to secondary" ] && [ -z "${STAGED_OK[$chain_key]}" ]; then
                 mvlogger "Not syncing $SYNCED_FILES: its move to the primary did not complete"
@@ -3153,11 +3171,26 @@ processTheMoves() {
             # synced for want of a recorded copy: a different file already at a name's place is not the sync's to replace
             if [ "$ACTION" = "sync unrecorded from primary" ] && differentTargets && [ ${#DIFFERS[@]} -gt 0 ]; then
                 for rel in "${DIFFERS[@]}"; do
-                    SYNCCONFLICTNAMES=$((SYNCCONFLICTNAMES + 1))
-                    [ "$SYNCCONFLICTNAMES" -gt "$SYNCCONFLICT_LIST_MAX" ] ||
-                        mvlogger "Not synchronized, a different file is already at $(qp "$DESTINATION/$rel"): move one of the two aside to synchronize it"
+                    listDiffer "Not synchronized, a different file is already at $(qp "$DESTINATION/$rel"): move one of the two aside to synchronize it"
                 done
                 SYNCCONFLICTFILES=$((SYNCCONFLICTFILES + NBFILES - GONE))
+                VANISHEDFILES=$((VANISHEDFILES + GONE))
+                remaining_done "$NBFILES" "$FILESIZE"
+                continue
+            fi
+
+            # a different file already at a name's place on the primary is the one the share shows: no copy from the secondary
+            # or unattended storage replaces it, whichever tool moves it; a staged move leaves the count to its sync row
+            if [[ "$ACTION" = "move from secondary" || "$ACTION" = "sync from secondary" || "$ACTION" = "move unattended to primary" ]] &&
+                [ "$FILETYPE" = "f" ] && differentTargets && [ ${#DIFFERS[@]} -gt 0 ]; then
+                for rel in "${DIFFERS[@]}"; do
+                    listDiffer "Left where it is: $(qp "$SOURCE/$rel") differs from the file already at $(qp "$DESTINATION/$rel"), which the share shows; remove the copy you do not want"
+                done
+                if [ "$STAGE_ROW" = 1 ]; then
+                    STAGED_KEPT[$chain_key]=$GONE
+                    continue
+                fi
+                PRIMARYCONFLICTFILES=$((PRIMARYCONFLICTFILES + NBFILES - GONE))
                 VANISHEDFILES=$((VANISHEDFILES + GONE))
                 remaining_done "$NBFILES" "$FILESIZE"
                 continue
@@ -3515,8 +3548,8 @@ processTheMoves() {
     fi
     trap - TERM HUP INT
     for top in "${TOP_FOLDERS[@]}"; do cleanTopFolder "$top"; done
-    if [ "$SYNCCONFLICTNAMES" -gt "$SYNCCONFLICT_LIST_MAX" ]; then
-        mvlogger "Not synchronized either, for a different file already in their place: $((SYNCCONFLICTNAMES - SYNCCONFLICT_LIST_MAX)) more names, not listed"
+    if [ "$DIFFERNAMES" -gt "$DIFFER_LIST_MAX" ]; then
+        mvlogger "Also left for a different file already in their place: $((DIFFERNAMES - DIFFER_LIST_MAX)) more names, not listed"
     fi
     if [ "$SYNC_RECORD_OK" = yes ] && ! syncRecordMerge; then
         mvlogger "Warning: cannot update the sync record $(qp "$SYNC_RECORD"): the next run tries again"
@@ -3838,6 +3871,9 @@ start() {
         fi
         if [ "$SYNCCONFLICTFILES" -gt 0 ]; then
             mvlogger_t "%s files were not synchronized: synchronizing them would replace a different file on the secondary storage. Check the Mover Tuning log." "warning" "$SYNCCONFLICTFILES"
+        fi
+        if [ "$PRIMARYCONFLICTFILES" -gt 0 ]; then
+            mvlogger_t "%s files were not moved or synchronized to the primary storage: a different file is already in their place there, and the share shows that one. Check the Mover Tuning log." "warning" "$PRIMARYCONFLICTFILES"
         fi
         if [ $((NOTMOVEDFILES + NOTMOVEDFOLDERS)) -gt 0 ]; then
             mvlogger "$NOTMOVEDFILES files and $NOTMOVEDFOLDERS folders representing $(bytes_to_human "$NOTMOVEDSIZE") could not be moved/synced."
