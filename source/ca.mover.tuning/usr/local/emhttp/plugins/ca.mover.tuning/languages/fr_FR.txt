@@ -8,6 +8,7 @@
 
 %s files and %s folders representing %s could not be movedsynced by Mover Tuning plugin=%s fichiers et %s dossiers représentant %s n’ont pas pu être déplacés/synchronisés par le plugin Mover Tuning.
 %s files and %s folders were movedsynced, but rsync reported errors for them Check the Mover Tuning log=%s fichiers et %s dossiers ont été déplacés/synchronisés, mais rsync a signalé des erreurs les concernant. Consultez le journal de Mover Tuning.
+%s files were not synchronized synchronizing them would replace a different file on the secondary storage Check the Mover Tuning log=%s fichiers n’ont pas été synchronisés : les synchroniser remplacerait un autre fichier sur le stockage secondaire. Consultez le journal de Mover Tuning.
 Action=Action
 a file is hidden under it stop writes to the share, zfs unmount %s, move anything in %s aside, zfs mount %s, then move it back into %s without replacing a file already there keep both copies and compare them=un fichier est masqué dessous : arrêtez les écritures sur le partage, lancez zfs unmount %s, mettez de côté tout ce qui est dans %s, lancez zfs mount %s, puis remettez le tout dans %s sans remplacer un fichier déjà présent : gardez les deux copies et comparez-les
 mounted again, but the look for a file written to %s as it was mounted was cut short, so one may be hidden under it stop writes to the share, zfs unmount %s, move anything in %s aside, zfs mount %s, then move it back into %s without replacing a file already there keep both copies and compare them=monté à nouveau, mais la recherche de fichiers écrits dans %s pendant le montage a été interrompue, un fichier y est peut-être masqué : arrêtez les écritures sur le partage, lancez zfs unmount %s, mettez de côté tout ce qui est dans %s, lancez zfs mount %s, puis remettez le tout dans %s sans remplacer un fichier déjà présent : gardez les deux copies et comparez-les
@@ -466,8 +467,11 @@ Youre welcome 😊 Thanks for using=Avec plaisir 😊 Merci pour votre utilisati
 <p>La lecture et la modification continueront de s’effectuer sur le stockage Primaire. La synchronisation des fichiers basée sur une taille maximale peut être utilisée en option.</p>
 <p><u>Note:</u></p>
 <ul>
-  <li><strong>SEULS les fichiers modifiés</strong> depuis la dernière synchronisation sont <strong>synchronisés</strong>.</li>
   <li><strong>SEULS les fichiers</strong> qui restent sur le pool de cache après l’exécution sont <strong>synchronisés</strong>.</li>
+  <li>Un fichier est synchronisé s’il a été modifié depuis la dernière synchronisation, ou, quelle que soit sa date, si le mover n’a encore enregistré aucune copie de lui (un fichier renommé, ou copié avec une date ancienne) ou s’il ne correspond plus à la copie enregistrée (un fichier remplacé par un autre à date ancienne). Sans registre (à la première exécution, par exemple), il vérifie chaque fichier une fois ; cette exécution peut durer autant qu’une resynchronisation.</li>
+  <li>Un fichier synchronisé seulement faute de copie enregistrée ne remplace jamais un autre fichier déjà à sa place sur le Secondaire : celui-ci reste tel quel, et le journal l’indique. Déplacez l’un des deux pour synchroniser le fichier.</li>
+  <li>Avec un filtre d’âge, un nouveau fichier n’est synchronisé qu’une fois plus vieux que les jours du filtre.</li>
+  <li>Supprimer ou renommer un fichier synchronisé sur le Primaire laisse son ancienne copie sur le Secondaire, où elle réapparaît dans la part.</li>
 </ul>
 :end
 
@@ -483,7 +487,7 @@ Youre welcome 😊 Thanks for using=Avec plaisir 😊 Merci pour votre utilisati
 
 :mover_tune_resynchronizecache_plug:
 <p>Cela resynchronisera les fichiers du stockage Primaire (cache) sur le Primaire et le Secondaire (array) afin qu’ils soient sauvegardés et protégés par la parité.</p>
-<p>Tous les fichiers seront resynchronisés à nouveau, indépendamment de leur date de modification.</p>
+<p>Chaque fichier listé par les filtres est resynchronisé, quelle que soit sa date de modification (la taille maximale de synchronisation s’applique toujours) ; une copie différente sur le Secondaire est remplacée. Un fichier plus récent que les jours du filtre d’âge n’est pas encore listé.</p>
 <p>S’applique aux parts qui se synchronisent, via <strong>Synchroniser les fichiers du primaire vers le secondaire</strong> ici ou dans les paramètres Mover Tuning propres à une part ; grisé tant qu’aucune part ne se synchronise.</p>
 <p>Après avoir réduit le nombre de jours du filtre d’âge, ou l’avoir réglé sur Non ou Auto, choisissez ici <strong>Exécuter une fois</strong>, sinon les fichiers retenus par ce filtre ne sont pas synchronisés.</p>
 <p>Cela peut être une opération longue. Le réglage « Run once » reviendra automatiquement à <strong>No</strong> après la prochaine exécution. Une exécution en mode test le laisse inchangé.</p>

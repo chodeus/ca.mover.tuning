@@ -10,6 +10,7 @@
 
 %s files and %s folders representing %s could not be movedsynced by Mover Tuning plugin=%s files and %s folders representing %s could not be moved/synced by Mover Tuning plugin.
 %s files and %s folders were movedsynced, but rsync reported errors for them Check the Mover Tuning log=%s files and %s folders were moved/synced, but rsync reported errors for them. Check the Mover Tuning log.
+%s files were not synchronized synchronizing them would replace a different file on the secondary storage Check the Mover Tuning log=%s files were not synchronized: synchronizing them would replace a different file on the secondary storage. Check the Mover Tuning log.
 Action=
 a file is hidden under it stop writes to the share, zfs unmount %s, move anything in %s aside, zfs mount %s, then move it back into %s without replacing a file already there keep both copies and compare them=a file is hidden under it: stop writes to the share, zfs unmount %s, move anything in %s aside, zfs mount %s, then move it back into %s without replacing a file already there: keep both copies and compare them
 mounted again, but the look for a file written to %s as it was mounted was cut short, so one may be hidden under it stop writes to the share, zfs unmount %s, move anything in %s aside, zfs mount %s, then move it back into %s without replacing a file already there keep both copies and compare them=mounted again, but the look for a file written to %s as it was mounted was cut short, so one may be hidden under it: stop writes to the share, zfs unmount %s, move anything in %s aside, zfs mount %s, then move it back into %s without replacing a file already there: keep both copies and compare them
@@ -459,8 +460,11 @@ Youre welcome 😊 Thanks for using=You're welcome! 😊 Thanks for using!
 <p>Reading and modification will still occur on Primary. Sync files based on maximum size optionally can be used.</p>
 <p><u>Note:</u></p>
 <ul>
-  <li><strong>ONLY modified files</strong> since the last sync are <strong>synchronized</strong>.</li>
   <li><strong>ONLY files</strong> that stay on the cache pool after the run are <strong>synchronized</strong>.</li>
+  <li>A file is synchronized when it changed since the last sync, or, whatever its date, when the mover has not recorded a copy of it yet (a renamed file, or one copied in with an old date) or when it no longer matches the copy recorded (a file replaced by one with an old date). Without a record (on the first run, for example) it checks every file once; that run can take as long as a Resynchronize.</li>
+  <li>A file synchronized only for want of a recorded copy never replaces a different file already in its place on Secondary: that file is left as it is, and the log names it. Move one of the two aside to synchronize the file.</li>
+  <li>With an age filter, a new file is first synchronized once it is older than the filter's days.</li>
+  <li>Deleting or renaming a synchronized file on Primary leaves its old copy on Secondary, where it shows in the share again.</li>
 </ul>
 :end
 
@@ -476,7 +480,7 @@ Youre welcome 😊 Thanks for using=You're welcome! 😊 Thanks for using!
 
 :mover_tune_resynchronizecache_plug:
 <p>This will resynchronize the Primary (cached) files on both Primary and Secondary (array) so they are backed up and parity protected.</p>
-<p>All files will be synchronized again independently of modification time.</p>
+<p>Every file the filters list is synchronized again, whatever its modification time (the sync size limit still applies); a copy on Secondary that differs is replaced. A file younger than the age filter's days is not listed yet.</p>
 <p>It resynchronizes the shares that synchronize, through <strong>Synchronize Primary files to Secondary</strong> here or in a share's own Mover Tuning settings, and is greyed out while no share does.</p>
 <p>After lowering the number of days of the age filter, or setting it to No or Auto, set this to <strong>Run once</strong>: files the filter held back are not synchronized otherwise.</p>
 <p>This can be a long operation. Run-once setting will reset back to <strong>No</strong> after next run. A run in Test Mode leaves it set.</p>
