@@ -164,6 +164,14 @@ log_has "Warning: cannot read or update the sync record \"$SYNC_RECORD\""
 counter SYNC_RECORD_OK no
 check "nothing written into it" "" "$(ls -A "$SYNC_RECORD")"
 
+begin "a record folder others can write to is never written through" synchronizeCache yes
+mkdir -p "$T/record"
+chmod 777 "$T/record"
+plan
+log_has "Warning: cannot read or update the sync record \"$SYNC_RECORD\""
+counter SYNC_RECORD_OK no
+check "nothing written into it" "" "$(ls -A "$T/record")"
+
 begin "a synced folder is not recorded" synchronizeCache yes
 mkdir -p /mnt/cache/sh/e "$T/record"
 row 'sync from primary' d sh/e | list
@@ -172,15 +180,17 @@ run_moves
 array_is sh sh/e
 recorded
 
-begin "a verified move off the secondary or unattended storage drops the key of the copy it took" synchronizeCache yes
+begin "a verified move drops the key of the copy it took and of the one it replaced" synchronizeCache yes
 mk disk1 sh/p.txt
-mk other sh/u.txt
+mk other sh/u.txt sh/v.txt
 mkdir -p "$T/record"
-printf '%s\n' '2|1.0|1.0|user0/sh/p.txt' '2|1.0|1.0|other/sh/u.txt' '2|1.0|1.0|user0/sh/keep.txt' >"$SYNC_RECORD"
-{ row 'move from secondary' f sh/p.txt; row 'move unattended to primary' f sh/u.txt; } | list
+printf '%s\n' '2|1.0|1.0|user0/sh/p.txt' '2|1.0|1.0|other/sh/u.txt' '2|1.0|1.0|other/sh/v.txt' '2|1.0|1.0|user0/sh/v.txt' \
+    '2|1.0|1.0|user0/sh/keep.txt' >"$SYNC_RECORD"
+{ row 'move from secondary' f sh/p.txt; row 'move unattended to primary' f sh/u.txt; row 'move unattended to secondary' f sh/v.txt; } | list
 SYNC_RECORD_OK=yes
 run_moves
 cache_is sh sh/p.txt sh/u.txt
+array_is sh sh/v.txt
 recorded user0/sh/keep.txt
 
 begin "a copy rsync reported an error for is not recorded, and a move it reported one for still drops its key" synchronizeCache yes

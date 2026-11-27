@@ -2017,8 +2017,9 @@ holdPartialHardlinks() {
 syncRecordLoad() {
     local dir=${SYNC_RECORD%/*}
     SYNC_RECORD_OK=yes
-    # /tmp is open to all: a folder or link someone else made there is never written through
-    if { [ -d "$dir" ] || mkdir -m 700 "$dir" 2>/dev/null; } && [ ! -L "$dir" ] && [ -O "$dir" ]; then
+    # /tmp is open to all: a folder or link someone else made there, or one others can write to, is never written through
+    if { [ -d "$dir" ] || mkdir -m 700 "$dir" 2>/dev/null; } && [ ! -L "$dir" ] && [ -O "$dir" ] &&
+        [ -z "$(find "$dir" -maxdepth 0 -perm /022)" ]; then
         # the temporary records (mktemp's six characters) of a merge a stop cut short
         rm -f -- "$SYNC_RECORD".??????
         # a record that is there but not a file is never read as an empty one
@@ -2047,7 +2048,7 @@ syncRecordMerge() {
 }
 
 # notes name $1 (share/path) of a verified file row in the record's changes: a sync to the secondary storage adds its copy,
-# and a move there takes the name out, as it leaves no copy on the primary
+# a move takes out the keys of the copy it took and of the one it replaced
 syncRecordNote() {
     local key=${DESTINATION#/mnt/}/$1 line from=${SOURCE#/mnt/}
     [ "$SYNC_RECORD_OK" = yes ] && [ "$FILETYPE" = f ] || return 0
@@ -2058,11 +2059,10 @@ syncRecordNote() {
         line=$(stat -c '%s|%.9Y|%.9Z' "$DESTINATION/$1" 2>/dev/null) || return 0
         line="+$line|$key"
         ;;
-    "move from primary" | "move unattended to secondary") line="-$key" ;;
-    "move from secondary" | "move unattended to primary")
+    "move "*)
         # the record names a copy on an array disk, or on /mnt/user, by user0
         [[ ! "$from" =~ ^(disk[0-9]+|user)$ ]] || from=user0
-        line="-$from/$1"
+        line="-$from/$1"$'\n'"-$key"
         ;;
     *) return 0 ;;
     esac
