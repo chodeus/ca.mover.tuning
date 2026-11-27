@@ -462,8 +462,8 @@ Youre welcome 😊 Thanks for using=You're welcome! 😊 Thanks for using!
 <p><u>Note:</u></p>
 <ul>
   <li><strong>ONLY files</strong> that stay on the cache pool after the run are <strong>synchronized</strong>.</li>
-  <li>A file is synchronized when it changed since the last sync, or, whatever its date, when the mover has not recorded a copy of it yet (a renamed file, or one copied in with an old date) or when it no longer matches the copy recorded (a file replaced by one with an old date). Without a record (on the first run, for example) it checks every file once; that run can take as long as a Resynchronize.</li>
-  <li>A file synchronized only for want of a recorded copy never replaces a different file already in its place on Secondary: that file is left as it is, and the log names it. Move one of the two aside to synchronize the file.</li>
+  <li>A file is synchronized when it changed since the last sync, or, whatever its date, when the mover has not recorded a copy of it yet (a renamed file, or a new one copied in with an old date) or when it no longer matches the copy recorded (a file replaced by one with an old date; with Use CTIME or Use ATIME on, only a change of size shows). Without a record (on the first run, or the first after a restart, for example) it checks every file once; that run can take as long as a Resynchronize.</li>
+  <li>A file synchronized only for want of a recorded copy never replaces a different file already in its place on Secondary: that file is left as it is, and the log names it (at most 100 names a run, then how many more). Move one of the two aside to synchronize the file.</li>
   <li>With an age filter, a new file is first synchronized once it is older than the filter's days.</li>
   <li>Deleting or renaming a synchronized file on Primary leaves its old copy on Secondary, where it shows in the share again.</li>
 </ul>

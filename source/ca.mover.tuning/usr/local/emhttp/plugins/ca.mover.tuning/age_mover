@@ -1335,6 +1335,9 @@ scriptLabel() {
     echo "$file"
 }
 
+# prints 1 when the list holds modified times, as it does unless the CTIME or ATIME setting in force is on
+listsMtime() { [ "$CTIME" = yes ] || [ "$ATIME" = yes ] || echo 1; }
+
 createFilteredFilelist() {
     mvlogger "$(titleLine 'FILTERING FILES' '*')"
 
@@ -1376,8 +1379,8 @@ createFilteredFilelist() {
             getMoverSettings "$MOVERTUNINGCFGFILE"
             mvlogger "------------------------------------------------------------------------"
         fi
-        # decideMoveActions takes each share's Synchronize setting and mark from here
-        SHARE_SYNC_SETTINGS+="$SYNCHRONIZECACHE|$LASTCACHESYNC|$SHARENAME"$'\n'
+        # decideMoveActions takes each share's Synchronize setting, mark and list time kind from here
+        SHARE_SYNC_SETTINGS+="$SYNCHRONIZECACHE|$LASTCACHESYNC|$(listsMtime)|$SHARENAME"$'\n'
 
         # Determine primary storage
         PRIMARYSTORAGENAME=$(grep "shareCachePool=" "$SHARECFG" | cut -d'=' -f 2 | tr -d '"' | tr -d '\r')
@@ -2019,7 +2022,7 @@ holdPartialHardlinks() {
 }
 
 # the record the planner reads, with the changes a stopped run left applied; SYNC_RECORD_OK=no when it cannot be read or
-# updated: the run then looks for no file without a recorded copy, and records nothing
+# updated: the run then syncs by date only, and records nothing
 syncRecordLoad() {
     local dir=${SYNC_RECORD%/*}
     SYNC_RECORD_OK=yes
@@ -2032,7 +2035,7 @@ syncRecordLoad() {
         { [ ! -e "$SYNC_RECORD" ] || [ -f "$SYNC_RECORD" ]; } && syncRecordMerge && return
     fi
     SYNC_RECORD_OK=no
-    mvlogger "Warning: cannot read or update the sync record $(qp "$SYNC_RECORD"): this run does not look for files without a recorded copy, and records nothing"
+    mvlogger "Warning: cannot read or update the sync record $(qp "$SYNC_RECORD"): this run syncs by date only, and records nothing"
 }
 
 # applies the changes file ("+" and a record line, or "-" and a key; a key's last line wins) to the record, through a temporary file
@@ -2054,7 +2057,7 @@ syncRecordMerge() {
 }
 
 # notes name $1 (share/path) of a verified file row in the record's changes: a sync to the secondary storage adds its copy,
-# a move takes out the keys of the copy it took and of the one it replaced
+# a move takes out the keys of the copy it took and of the one it replaced; keys mirror record_key() in decideMoveActions
 syncRecordNote() {
     local key=${DESTINATION#/mnt/}/$1 line from=${SOURCE#/mnt/}
     [ "$SYNC_RECORD_OK" = yes ] && [ "$FILETYPE" = f ] || return 0
@@ -2108,14 +2111,15 @@ decideMoveActions() {
     # Fields: $1:PRIMARYSTORAGENAME $2:SECONDARYSTORAGENAME $3:SHARENAME $4:SHAREUSECACHE $5:MODIFYTIME
     # $6:PRIMARYSIZETHRESH $7:POOLUSED $8:FILESIZE $9:SPARSENESS $10:NBLINKS $11:INODE $12:FILETYPE $13:FILEPATH
 
-    RECORD=$([ "$SYNC_RECORD_OK" != yes ] || echo "$SYNC_RECORD") SHARE_PLAN_RULES="$SHARE_PLAN_RULES" SHARE_SYNC_SETTINGS="$SHARE_SYNC_SETTINGS" awk -F"|" -v RECORD_KEY="$SYNC_RECORD_KEY" -v LIST_MTIME="$([ "$CTIME" = yes ] || [ "$ATIME" = yes ] || echo 1)" -v AGE="$AGE" -v STATS_FILE="$STATS_FILE" -v LASTCACHESYNC="$LASTCACHESYNC" -v SOFTSTOPFILE="$SOFTSTOPFILE" -v SYNCHRONIZECACHE="$SYNCHRONIZECACHE" -v REBALANCESHARES="$REBALANCESHARES" -v RESYNCHRONIZECACHE="$RESYNCHRONIZECACHE" -v HELD_FILELIST="$HELD_FILELIST" '
+    RECORD=$([ "$SYNC_RECORD_OK" != yes ] || echo "$SYNC_RECORD") SHARE_PLAN_RULES="$SHARE_PLAN_RULES" SHARE_SYNC_SETTINGS="$SHARE_SYNC_SETTINGS" awk -F"|" -v RECORD_KEY="$SYNC_RECORD_KEY" -v LIST_MTIME="$(listsMtime)" -v AGE="$AGE" -v STATS_FILE="$STATS_FILE" -v LASTCACHESYNC="$LASTCACHESYNC" -v SOFTSTOPFILE="$SOFTSTOPFILE" -v SYNCHRONIZECACHE="$SYNCHRONIZECACHE" -v REBALANCESHARES="$REBALANCESHARES" -v RESYNCHRONIZECACHE="$RESYNCHRONIZECACHE" -v HELD_FILELIST="$HELD_FILELIST" '
         # the path is the last field and may itself contain the separator
         function full_path(   p, i) { p = $13; for (i = 14; i <= NF; i++) p = p "|" $i; return p }
-        # the Synchronize and lastCacheSync a share syncs with, as getMoverSettings resolved them for it (else the global ones)
+        # the Synchronize, lastCacheSync and list time kind of a share, as getMoverSettings resolved them for it (else the global ones)
         function share_sync(share) {
             if (share in sync_on) return
             sync_on[share] = (share in resolved_sync) ? resolved_sync[share] : global_sync
             sync_mark[share] = (share in resolved_mark) ? resolved_mark[share] : global_mark
+            list_mtime[share] = (share in resolved_mtime) ? resolved_mtime[share] : LIST_MTIME
         }
         # whether share syncs a kept file of that size at all: Synchronize on, under its size limit
         function may_sync(share, size) {
@@ -2124,12 +2128,12 @@ decideMoveActions() {
         }
         # whether share syncs a kept file of that time and size: at or after its lastCacheSync minus its age window, or changed
         # since its recorded copy whatever its date
-        function share_syncs(share, t, size) { return may_sync(share, size) && (t >= sync_mark[share] - sync_window[share] || RESYNCHRONIZECACHE == "yes" || copy_changed(size, t)) }
-        # the list holds ctimes or atimes when those settings are on, so only the size can be compared then
-        function copy_changed(size, t,   r, k) {
+        function share_syncs(share, t, size) { return may_sync(share, size) && (t >= sync_mark[share] - sync_window[share] || RESYNCHRONIZECACHE == "yes" || copy_changed(share, size, t)) }
+        # the list holds ctimes or atimes for a share with those settings on, so only the size can be compared then
+        function copy_changed(share, size, t,   r, k) {
             if (!use_record || !((k = record_key()) in recorded)) return 0
             split(recorded[k], r, "|")
-            return r[1] != size || (LIST_MTIME && r[2] != t)
+            return r[1] != size || (list_mtime[share] && r[2] != t)
         }
         function unrecorded(share, size) { return use_record && may_sync(share, size) && !(record_key() in recorded) }
         # mirrors the key syncRecordNote writes: secondary storage, then the path below the pool
@@ -2145,15 +2149,16 @@ decideMoveActions() {
             # Initialize previous inode and dictionary for pool sums
             previous_inode = 0
 
-            # the global Synchronize and lastCacheSync, and those of each share as getMoverSettings resolved them ("sync|mark|share" rows)
+            # the global Synchronize and lastCacheSync, and those of each share as getMoverSettings resolved them ("sync|mark|mtime|share" rows)
             global_sync = SYNCHRONIZECACHE
             global_mark = LASTCACHESYNC + 0
             n = split(ENVIRON["SHARE_SYNC_SETTINGS"], share_rows, "\n")
             for (i = 1; i <= n; i++) {
-                if (split(share_rows[i], f, "|") < 3) continue
-                share = substr(share_rows[i], length(f[1]) + length(f[2]) + 3)
+                if (split(share_rows[i], f, "|") < 4) continue
+                share = substr(share_rows[i], length(f[1]) + length(f[2]) + length(f[3]) + 4)
                 resolved_sync[share] = f[1]
                 resolved_mark[share] = f[2] + 0
+                resolved_mtime[share] = f[3] + 0
             }
 
             # the copies the record holds, read only when a share syncs; an empty RECORD (unreadable) means none is used
@@ -2549,7 +2554,8 @@ warnMinimumFreeSpace() {
         shown="not set"
         [ "$floor" -gt 0 ] && shown=$(page_size $((10#$floorkb * 1000)))
         mvlogger "Warning: [$share] Minimum free space ($shown) is below the largest file to move ($(page_size "$largest")) and $disk has $(page_size "$free") free for $(page_size "$planned"): a file that does not fit fails with \"No space left on device\". Set Minimum free space to at least $(page_size "$largest" up)."
-    done < <(awk -F'|' 'NR > 1 && $13 == "/mnt/user0" && $14 == "f" && $11 ~ /^(move|sync) / {
+    # a sync for want of a recorded copy mostly finds that copy already there, so only the other moves and syncs count
+    done < <(awk -F'|' 'NR > 1 && $13 == "/mnt/user0" && $14 == "f" && $11 ~ /^(move|sync) / && $11 != "sync unrecorded from primary" {
         if ($5 + 0 > max[$2]) max[$2] = $5 + 0
         sum[$2] += $5
     } END { for (s in max) print s "|" max[s] "|" sum[s] }' "$MOVER_ACTIONLIST")
@@ -2596,6 +2602,13 @@ differentTargets() {
 listDiffer() {
     DIFFERNAMES=$((DIFFERNAMES + 1))
     [ "$DIFFERNAMES" -gt "$DIFFER_LIST_MAX" ] || mvlogger "$1"
+}
+
+# counts the row left for a different file in its place in counter $1, with $2 of its names gone from the source
+leftForDiffer() {
+    printf -v "$1" '%s' "$((${!1} + NBFILES - $2))"
+    VANISHEDFILES=$((VANISHEDFILES + $2))
+    remaining_done "$NBFILES" "$FILESIZE"
 }
 
 # Takes names ($1) and bytes ($2) that are no longer waiting off the remaining-work counters of this row's direction.
@@ -3148,10 +3161,7 @@ processTheMoves() {
 
             # a chain whose staged move found a different file on the primary is left whole; its sync row counts it
             if [ "$ACTION" = "sync unattended to secondary" ] && [ -n "${STAGED_KEPT[$chain_key]}" ]; then
-                gone=${STAGED_KEPT[$chain_key]}
-                PRIMARYCONFLICTFILES=$((PRIMARYCONFLICTFILES + NBFILES - gone))
-                VANISHEDFILES=$((VANISHEDFILES + gone))
-                remaining_done "$NBFILES" "$FILESIZE"
+                leftForDiffer PRIMARYCONFLICTFILES "${STAGED_KEPT[$chain_key]}"
                 continue
             fi
 
@@ -3173,9 +3183,7 @@ processTheMoves() {
                 for rel in "${DIFFERS[@]}"; do
                     listDiffer "Not synchronized, a different file is already at $(qp "$DESTINATION/$rel"): move one of the two aside to synchronize it"
                 done
-                SYNCCONFLICTFILES=$((SYNCCONFLICTFILES + NBFILES - GONE))
-                VANISHEDFILES=$((VANISHEDFILES + GONE))
-                remaining_done "$NBFILES" "$FILESIZE"
+                leftForDiffer SYNCCONFLICTFILES "$GONE"
                 continue
             fi
 
@@ -3190,9 +3198,7 @@ processTheMoves() {
                     STAGED_KEPT[$chain_key]=$GONE
                     continue
                 fi
-                PRIMARYCONFLICTFILES=$((PRIMARYCONFLICTFILES + NBFILES - GONE))
-                VANISHEDFILES=$((VANISHEDFILES + GONE))
-                remaining_done "$NBFILES" "$FILESIZE"
+                leftForDiffer PRIMARYCONFLICTFILES "$GONE"
                 continue
             fi
 

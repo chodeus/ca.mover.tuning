@@ -7,9 +7,8 @@
 OLD="2020-01-01 00:00:00.123456789"
 MARK=1767323045
 
-# plan [share/path]...: decideMoveActions on these files and folders of /mnt/cache, rows of share sh, which keeps them and
-# syncs with lastCacheSync at MARK unless the case turned Synchronize off; RULES are the share's plan rules, and TIME the
-# time the list gives each file (its mtime by default, as find lists it)
+# plan [share/path]...: decideMoveActions on these /mnt/cache rows of share sh, which keeps them and syncs from MARK; RULES,
+# TIME (each file's list time), LISTM (0: the share lists ctimes) and SHARESYNC (its own Synchronize) override the defaults
 plan() {
     local p m s n i y
     FILTERED_FILELIST=$T/filtered HELD_FILELIST=$T/held overrideFlag=0
@@ -24,7 +23,7 @@ plan() {
             printf 'cache|user0|sh|yes|%s|0|0|%s|0|%s|%s|%s|/mnt/cache/%s\n' "$m" "$s" "$n" "$i" "$y" "$p"
         done
     } >"$FILTERED_FILELIST"
-    SHARE_PLAN_RULES=${RULES:-"sh|1|0|0|0|0"} SHARE_SYNC_SETTINGS="$SYNCHRONIZECACHE|$MARK|sh"$'\n'
+    SHARE_PLAN_RULES=${RULES:-"sh|1|0|0|0|0"} SHARE_SYNC_SETTINGS="${SHARESYNC:-$SYNCHRONIZECACHE}|$MARK|${LISTM:-1}|sh"$'\n'
     decideMoveActions >/dev/null 2>"$T/plan.err"
     check "decideMoveActions wrote nothing on stderr" "" "$(cat "$T/plan.err")"
 }
@@ -131,14 +130,23 @@ run_moves
 check "the copies hold the new content" "a longer file y" "$(cat /mnt/user0/sh/v/s.txt /mnt/user0/sh/v/t.txt | paste -sd' ')"
 check "the record holds the new copies" "$( (line_of sh/v/s.txt; line_of sh/v/t.txt) | LC_ALL=C sort)" "$(LC_ALL=C sort "$SYNC_RECORD")"
 
-begin "with ctimes in the list, a recorded copy of the same size stays as it is" synchronizeCache yes
+begin "with a share's own ctime setting on, a recorded copy of the same size stays as it is" synchronizeCache yes
+mk cache sh/k.txt
+old sh/k.txt
+copy_of sh/k.txt
+mkdir -p "$T/record"
+line_of sh/k.txt >"$SYNC_RECORD"
+LISTM=0 TIME=$(date -d 2021-01-01 +%s) plan sh/k.txt
+actions "keep on primary: sh/k.txt"
+
+begin "with only the global ctime setting on, a share listing mtimes still compares its recorded copy's mtime" synchronizeCache yes
 mk cache sh/k.txt
 old sh/k.txt
 copy_of sh/k.txt
 mkdir -p "$T/record"
 line_of sh/k.txt >"$SYNC_RECORD"
 CTIME=yes TIME=$(date -d 2021-01-01 +%s) plan sh/k.txt
-actions "keep on primary: sh/k.txt"
+actions "sync from primary: sh/k.txt"
 
 begin "a folder syncs by date only" synchronizeCache yes
 mkdir -p /mnt/cache/sh/e
@@ -252,13 +260,19 @@ old sh/n.txt
 plan sh/n.txt
 actions "keep on primary: sh/n.txt"
 
+begin "a share whose own Synchronize is on under a global off syncs a file the record lacks" synchronizeCache no
+mk cache sh/n.txt
+old sh/n.txt
+SHARESYNC=yes plan sh/n.txt
+actions "sync unrecorded from primary: sh/n.txt"
+
 begin "a record that cannot be read or updated: the run syncs by date only and records nothing" synchronizeCache yes
 mk cache sh/u.txt sh/v.txt
 old sh/u.txt
 # a file where the record's folder must be
 : >"$T/record"
 plan sh/u.txt sh/v.txt
-log_has "Warning: cannot read or update the sync record \"$SYNC_RECORD\": this run does not look for files without a recorded copy, and records nothing"
+log_has "Warning: cannot read or update the sync record \"$SYNC_RECORD\": this run syncs by date only, and records nothing"
 actions "keep on primary: sh/u.txt
 sync from primary: sh/v.txt"
 run_moves
@@ -401,5 +415,15 @@ array_is sh sh/e.txt sh/m.txt
 recorded
 counter TOOLERRORFILES 2
 counter SYNCFAILED 1
+
+begin "the free-space warning counts a dated sync's bytes, not those of a sync for want of a recorded copy"
+mkdir -p /mnt/cache/sh
+printf 'four\n' >/mnt/cache/sh/a.txt
+row 'sync unrecorded from primary' f sh/a.txt | list
+(array_disk_space() { echo "disk1 100 2"; } && warnMinimumFreeSpace >/dev/null)
+log_lacks 'Minimum free space'
+row 'sync from primary' f sh/a.txt | list
+(array_disk_space() { echo "disk1 100 2"; } && warnMinimumFreeSpace >/dev/null)
+log_has 'Warning: [sh] Minimum free space (not set) is below the largest file to move (5 B) and disk1 has 2 B free for 5 B'
 
 finish
